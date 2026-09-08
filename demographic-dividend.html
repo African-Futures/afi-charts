@@ -31,7 +31,8 @@ body{
   font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
   -webkit-font-smoothing:antialiased;
 }
-.afi{max-width:820px; margin:0 auto; padding:18px 20px 14px}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
 
 .afi-title{font-family:var(--display); font-size:22px; font-weight:400;
   line-height:1.25; margin:0 0 5px; text-wrap:balance}
@@ -78,7 +79,7 @@ svg{display:block; width:100%; height:auto; overflow:visible}
 .wrap{position:relative}
 
 /* table view */
-.afi-table{margin-top:14px; overflow-x:auto; max-height:340px; overflow-y:auto}
+.afi-table{overflow:auto}   /* max-height set from CONFIG.height in JS */
 .afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
 .afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
 .afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
@@ -104,11 +105,11 @@ svg{display:block; width:100%; height:auto; overflow:visible}
     <svg id="chart" role="img" aria-labelledby="title"></svg>
     <div class="tip" id="tip" hidden></div>
   </div>
+  <div class="afi-table" id="tableview" hidden></div>
   <div class="afi-foot">
     <div class="afi-source" id="source"></div>
     <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
   </div>
-  <div class="afi-table" id="tableview" hidden></div>
 </div>
 
 <script>
@@ -183,7 +184,7 @@ const svg = d3.select("#chart");
 const tip = d3.select("#tip");
 
 function render(){
-  const node = document.querySelector(".wrap");
+  const node = document.querySelector(".afi");
   W = node.clientWidth || 780;
   const narrow = W < 560;
   /* right margin holds the end labels; on narrow screens they are dropped
@@ -191,7 +192,10 @@ function render(){
      but must give back the vertical space the legend needs. */
   const M = {top:14, right: narrow ? 14 : 118, bottom:30, left:44};
   const legendH = narrow ? 52 : 0;
-  const H = CONFIG.height + legendH;
+  /* The SVG keeps a constant height at every width: on narrow screens the
+     legend takes its space from the plot rather than adding to the page, so
+     a single fixed iframe height works on desktop and mobile alike. */
+  const H = CONFIG.height;
   const iw = Math.max(120, W - M.left - M.right);
   const ih = H - M.top - M.bottom - legendH;
 
@@ -374,12 +378,19 @@ function buildTable(){
   document.getElementById("tableview").innerHTML =
     `<table><caption class="sr-only">${CONFIG.title}</caption><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
-const btn = document.getElementById("toggle"), tv = document.getElementById("tableview");
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place rather than stacking below it. Inside a
+   fixed-height iframe there is no room to grow, so a stacked table is simply
+   clipped — swapping keeps everything visible at one iframe height. */
 btn.addEventListener("click", () => {
-  const open = tv.hasAttribute("hidden");
-  if (open) tv.removeAttribute("hidden"); else tv.setAttribute("hidden","");
-  btn.textContent = open ? "Hide data" : "Show data";
-  btn.setAttribute("aria-expanded", String(open));
+  const showTable = tv.hasAttribute("hidden");
+  tv.style.maxHeight = CONFIG.height + "px";
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
   reportHeight();
 });
 
