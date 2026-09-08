@@ -6,7 +6,7 @@
 <title>Demographic dividend by African Union region, 1960–2100</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
 /* ============================================================
@@ -21,8 +21,8 @@
   --grid:     #d1d2d4;   /* gridlines                       */
   --panel:    #eff0f1;   /* forecast band, table stripes    */
   --surface:  #ffffff;   /* chart canvas                    */
-  --display: "Jost","Century Gothic",Futura,system-ui,sans-serif;
-  --body:    "IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0; padding:0; background:var(--surface)}
@@ -33,7 +33,7 @@ body{
 }
 .afi{max-width:820px; margin:0 auto; padding:18px 20px 14px}
 
-.afi-title{font-family:var(--display); font-size:22px; font-weight:500;
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
   line-height:1.25; margin:0 0 5px; text-wrap:balance}
 .afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
 
