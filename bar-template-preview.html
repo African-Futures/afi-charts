@@ -572,6 +572,12 @@ function render(){
      with anything, at any width, in any configuration. */
   const titleH = (CONFIG.vTitle || ovlActive) ? 20 : 0;
 
+  /* The forecast annotation gets a reserved strip immediately above the plot
+     rather than a position inside it. Drawn inside, it sat over whatever the
+     bars happened to be doing — on a 100% stack, where every column fills the
+     full height, it landed straight on a segment label. */
+  const fcH = (!HORIZ && CONFIG.forecastFrom != null) ? 16 : 0;
+
   const numeric = ROWS.every(r => typeof r.cat === "number" || /^\d+$/.test(String(r.cat)));
   /* Column category labels wrap onto up to `catLines` horizontal lines rather
      than tilting. Angled labels cost width as well as height — the plot has to
@@ -612,7 +618,7 @@ function render(){
 
   /* ---------- size ---------- */
   const rowH = barRowHeight();
-  const chromeH = titleH + legendH;
+  const chromeH = titleH + legendH + fcH;
   const H = HORIZ
     ? chromeH + M.top + ROWS.length * rowH + M.bottom
     : CONFIG.height;
@@ -697,10 +703,13 @@ function render(){
       if (CONFIG.forecastShade)
         g.append("rect").attr("class","fcband").attr("x", bx).attr("y", 0)
           .attr("width", Math.max(0, iw - bx)).attr("height", ih);
+      /* the boundary line runs up into its own strip, so line and label read
+         as one mark without the label ever crossing a bar */
       g.append("line").attr("class","fcline")
-        .attr("x1",bx).attr("x2",bx).attr("y1",0).attr("y2",ih);
-      g.append("text").attr("class","fclabel")
-        .attr("x", bx + 5).attr("y", 10).text("Forecast →");
+        .attr("x1",bx).attr("x2",bx).attr("y1",-fcH + 2).attr("y2",ih);
+      svg.append("text").attr("class","fclabel")
+        .attr("x", M.left + bx + 5).attr("y", titleH + legendH + 12)
+        .text("Forecast →");
     } else {
       console.warn(`forecastFrom ${key} is not one of the categories.`);
     }
