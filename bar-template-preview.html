@@ -730,7 +730,13 @@ function render(){
   }
 
   /* ---------- gridlines, perpendicular to the value axis ---------- */
-  const ticks = v.ticks(PCT ? 5 : 6);
+  /* Tick count follows the room available, not a fixed 6. On a narrow bar
+     chart the country names take most of the width and six value ticks ran
+     into one another — "100" touching "200" touching "300" at 360px. */
+  const axisLen = HORIZ ? iw : ih;
+  const tickRoom = HORIZ ? Math.max(60, widestVal + 26) : 40;
+  const nTicks = Math.max(3, Math.min(PCT ? 5 : 6, Math.floor(axisLen / tickRoom)));
+  const ticks = v.ticks(nTicks);
   g.append("g").attr("class","grid").selectAll("line").data(ticks).join("line")
     .attr("x1", d => HORIZ ? vpos(d) : 0).attr("x2", d => HORIZ ? vpos(d) : iw)
     .attr("y1", d => HORIZ ? 0 : vpos(d)).attr("y2", d => HORIZ ? ih : vpos(d));
@@ -742,7 +748,7 @@ function render(){
     catAxisG.selectAll("text").text(d => ellipsis(d, catFont, Math.max(28, M.left - 12)))
       .append("title").text(d => d);
     g.append("g").attr("class","axis").attr("transform",`translate(0,${ih})`)
-      .call(d3.axisBottom(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+      .call(d3.axisBottom(v).ticks(nTicks).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
   } else {
     /* Numeric categories thin out; text categories wrap onto up to catLines
        horizontal lines. Nothing tilts — an angled label costs width as well as
@@ -754,7 +760,9 @@ function render(){
     if (!M._numeric){
       ax.selectAll("text").each(function(d){
         const t = d3.select(this);
-        const lines = wrapLabel(d, Math.max(30, cat.bandwidth() - 2), catFont, catLines);
+        /* budget is the band itself — a floor wider than the band is how
+           "Nigeria" ended up overlapping "Democratic…" at 360px */
+        const lines = wrapLabel(d, cat.bandwidth() - 2, catFont, catLines);
         t.text(null);
         lines.forEach((ln, i) =>
           t.append("tspan").attr("x", 0).attr("dy", i ? `${CAT_LH}px` : null).text(ln));
@@ -762,7 +770,7 @@ function render(){
       });
     }
     g.append("g").attr("class","axis")
-      .call(d3.axisLeft(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+      .call(d3.axisLeft(v).ticks(nTicks).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
   }
 
   /* ---------- bars ---------- */
@@ -839,8 +847,15 @@ function render(){
     || (CONFIG.valueLabels === "auto" && (MODE === "single" || STACKED));
   if (wantLabels){
     if (STACKED && CONFIG.stackTotals && !PCT){
-      /* net-sum at the end of the stack — house pattern for stacked columns */
-      g.append("g").selectAll("text").data(ROWS).join("text")
+      /* Net-sum at the end of the stack — house pattern for stacked columns.
+         On a column chart the totals sit side by side, so a 16-year series at
+         phone width had them running into each other; drop them all rather
+         than print an unreadable row. On bars they stack vertically and only
+         need the row to be tall enough for a line of type. */
+      const totalsFit = HORIZ
+        ? cat.bandwidth() >= 13
+        : cat.bandwidth() >= Math.max(...ROWS.map(r => textW(fmt(r.total), labelFont))) + 6;
+      g.append("g").selectAll("text").data(totalsFit ? ROWS : []).join("text")
         .attr("class","totlabel")
         .attr("x", d => HORIZ ? vpos(d.total) + 6 : cat(String(d.cat)) + cat.bandwidth()/2)
         .attr("y", d => HORIZ ? cat(String(d.cat)) + cat.bandwidth()/2 : vpos(d.total) - 6)
