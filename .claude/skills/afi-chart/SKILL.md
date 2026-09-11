@@ -7,18 +7,22 @@ description: "Build an interactive D3 chart in the AFI house style from a data e
 
 Turn a data extract into one self-contained interactive HTML chart in the African Futures & Innovation house style, ready to upload to GitHub Pages and embed in OpenCMS as an iframe.
 
-The conventions are already settled. Do not re-derive colours, type or chart furniture — read them from the project docs and apply them.
+The conventions are already settled. Do not re-derive colours, type or chart furniture — read them from `docs/` and apply them.
 
-## Project docs to read first
+## Repository files to read first
 
-| Doc | What it holds |
+Paths are relative to the repository root.
+
+| File | What it holds |
 |---|---|
-| `claude/AFI chart conventions (from Flourish).md` | The full system: ramp, greyscale, typography, house grammar, sequential ramps, hosting |
-| `claude/AFI line chart template.html` | The working line-chart template — start from this, do not rewrite it |
-| `claude/AFI bar chart template.html` | The working bar/column template — two orientations, four modes |
-| `claude/AFI bar and column chart decisions.md` | Why the bar template is shaped as it is, its CONFIG keys, measured heights, and the verification method |
-| `claude/IFs decoder and build script.py` | Decoder for raw International Futures extracts |
-| `claude/Publishing an AFI chart (GitHub Pages).md` | How the finished file gets published and embedded |
+| `docs/afi-chart-conventions-from-flourish.md` | The full system: ramp, greyscale, typography, house grammar, sequential ramps, hosting |
+| `templates/afi-line-chart-template.html` | The working line-chart template — start from this, do not rewrite it |
+| `templates/afi-bar-chart-template.html` | The working bar/column template — two orientations, four modes |
+| `docs/afi-bar-and-column-decisions.md` | Why the bar template is shaped as it is, its CONFIG keys, measured heights, and the verification method |
+| `tools/ifs-decoder.py` | Decoder for raw International Futures extracts |
+| `docs/publishing-an-afi-chart-github-pages.md` | How the finished file gets published and embedded |
+| `tools/verify-bar-layout.js` | Layout harness — runs the template's geometry functions against exact d3 scale reimplementations |
+| `tools/build-review-page.py` | Builds the preview page from the bar template, so the two cannot drift |
 
 Read the relevant template and the decoder before building. Read the conventions doc when anything is unclear.
 
@@ -65,7 +69,7 @@ Do not ask about colour, fonts, hover behaviour, breakpoints or the table view. 
 
 ## Step 2 — Read the data
 
-For an IFs extract, use the decoder from the project docs. It detects header row positions rather than assuming them, maps variable codes to readable labels, expands known group names, and flags unknown ones. When a variable code or group name is missing from its tables, add it and write the decoder back to the project docs so the next extract decodes cleanly.
+For an IFs extract, use `tools/ifs-decoder.py`. It detects header row positions rather than assuming them, maps variable codes to readable labels, expands known group names, and flags unknown ones. When a variable code or group name is missing from its tables, add it and commit the decoder back so the next extract decodes cleanly.
 
 For any other source, parse it directly, but report what you found before building: year range, series count, units, missing values. Never silently drop or interpolate a series.
 
@@ -186,7 +190,7 @@ Slot 6 amber is 2.24:1 on white — wherever it appears it must carry a direct l
 
 **Settled:** the line chart; the bar and column chart in both orientations and four modes; the ramp, greyscale, typography, hosting, embedding and height measurement.
 
-**Not yet built:** stacked area, dot plot, treemap, sankey, choropleth. Build on demand rather than speculatively. When one is built and the user is happy with it, update this skill and add its template to the project docs.
+**Not yet built:** stacked area, dot plot, treemap, sankey, choropleth. Build on demand rather than speculatively. When one is built and the user is happy with it, update this skill and add its template to `templates/`.
 
 **Known rough edges:**
 
