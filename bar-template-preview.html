@@ -53,6 +53,7 @@ svg{display:block; width:100%; height:auto; overflow:visible}
 .bar.dim{opacity:.28}                /* non-highlighted bars, when highlight is in use */
 .vlabel{font-size:12px; font-weight:500}
 .vlabel.inside{fill:var(--surface)}
+.seglabel{font-size:11.5px; font-weight:500}   /* fill set per segment, from its luminance */
 .totlabel{font-size:12px; font-weight:600; fill:var(--ink)}
 .fcband{fill:var(--panel)}
 .fcline{stroke:var(--grid); stroke-dasharray:3 3}
@@ -278,6 +279,13 @@ const CONFIG = {
   /* ---- labels ---- */
   valueLabels: "auto",    // true | false | "auto" (on for single, off for grouped)
   stackTotals: true,      // net-sum label at the end of each stack
+  /* Stacked charts only: the value inside each segment, drawn where it fits
+     and silently skipped where it does not. Independent of valueLabels, which
+     governs the label at the bar's end. */
+  segmentLabels: false,
+  segmentLabelFormat: null,  // "value" | "share"; null = share on 100%, value otherwise
+  shareDecimals: 0,
+  catLines:    2,         // columns: lines a wrapped category label may use (1–3)
   decimals:    0,         // value labels, tooltip and table
   axisDecimals: 0,        // value-axis ticks
   valuePrefix: "",        // "$"
@@ -380,6 +388,13 @@ function prepare(){
     msgs.push(`${USED.length} series exceeds the ${RAMP.length}-slot ramp — fold the tail into "Other" or facet.`);
   if (STACKED && SERIES.some(s => (DATA.values[s.name]||[]).some(v => v != null && v < 0)))
     msgs.push("Negative values in a stacked chart — segments will overlap the baseline. Use grouped.");
+  if (HORIZ) {
+    const est = ROWS.length * barRowHeight() + 80;
+    if (est > 700) msgs.push(
+      `${ROWS.length} categories × ${SERIES.length} series comes to about ${est}px of chart. ` +
+      `Past roughly 700px a bar chart stops being readable in an article — cut the tail into ` +
+      `"Other", facet it, or put the categories on a column axis.`);
+  }
   if (CONFIG.sort !== "none" && ROWS.every(r => /^\d{4}$/.test(String(r.cat))))
     msgs.push(`sort "${CONFIG.sort}" on a year axis — ordering years by size is a lie. Use sort "none".`);
   const key = msgs.join("|");
@@ -469,6 +484,27 @@ function probeCtx(){
   return probeCtx._c || (probeCtx._c = document.createElement("canvas").getContext("2d"));
 }
 function textW(str, font){ const c = probeCtx(); c.font = font; return c.measureText(String(str)).width; }
+/* Greedy word wrap to at most `maxLines`; anything that still will not fit is
+   folded into the last line and ellipsised, so a long name degrades rather
+   than overflowing into its neighbour. */
+function wrapLabel(str, maxW, font, maxLines){
+  const words = String(str).split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words){
+    const t = line ? line + " " + w : w;
+    if (line && textW(t, font) > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines){
+    const head = lines.slice(0, maxLines - 1);
+    head.push(ellipsis(lines.slice(maxLines - 1).join(" "), font, maxW));
+    return head;
+  }
+  return lines.map(l => ellipsis(l, font, maxW));   // a single long word
+}
+
 function ellipsis(str, font, maxW){
   if (textW(str, font) <= maxW) return String(str);
   let s = String(str);
@@ -528,23 +564,33 @@ function render(){
         return textW(fmt(STACKED ? r.total : (finite.length ? Math.max(...finite) : 0)), labelFont);
       }));
 
+  /* The axis title gets its own reserved row at the very top of the SVG,
+     above the legend and outside the plot entirely. It used to live in the
+     top margin, positioned relative to a margin that changed size with the
+     value-label setting — which is how it ended up sitting on the top
+     gridline and through the topmost tick. A row of its own cannot collide
+     with anything, at any width, in any configuration. */
+  const titleH = (CONFIG.vTitle || ovlActive) ? 20 : 0;
+
+  const numeric = ROWS.every(r => typeof r.cat === "number" || /^\d+$/.test(String(r.cat)));
+  /* Column category labels wrap onto up to `catLines` horizontal lines rather
+     than tilting. Angled labels cost width as well as height — the plot has to
+     give up space on both sides for the overhang — and they are slower to read.
+     A fixed line allowance also keeps the SVG height constant across widths. */
+  const catLines = numeric ? 1 : Math.min(3, Math.max(1, CONFIG.catLines ?? 2));
+  const CAT_LH = 14;
+
   let M;
   if (HORIZ){
     M = {
-      top: 10,
+      top: 6,
       right: Math.max(12, Math.min(Math.ceil(widestEndLabel) + 14, Math.round(W * 0.25)) + 4),
-      bottom: 44,           /* value ticks, then the axis title under them */
+      bottom: 26,           /* the value ticks; the title is in its own row now */
       /* 12px of gutter, so the ellipsis budget below (M.left - 12) comes out
          at exactly the widest label and short labels are never truncated. */
       left: Math.min(Math.ceil(widestCat) + 12, Math.round(W * 0.42)),
     };
   } else {
-    /* Columns with text categories need room under the axis for a rotated
-       label. That room is reserved whether or not rotation kicks in at this
-       width, so the SVG height is the same number at every width — the
-       fixed-iframe contract. */
-    const numeric = ROWS.every(r => typeof r.cat === "number" || /^\d+$/.test(String(r.cat)));
-    const rotReserve = numeric ? 0 : Math.min(72, Math.ceil(widestCat * 0.64));
     /* The right margin has to hold the second axis's ticks AND its title,
        which sits at the top of that axis. Sizing it to the ticks alone let
        a title like "Index (1 = 2010)" run off the edge of the SVG. */
@@ -552,32 +598,45 @@ function render(){
     if (ovlActive){
       const ovlVals = (DATA.values[OVL.series] || []).filter(x => x != null);
       const widestOvlTick = Math.max(...ovlVals.map(x => textW(fmtOvl(x), tickFont)), 10);
-      const ovlTitleW = textW(OVL.title || OVL.series, tickFont);
-      rightM = Math.min(Math.round(W * 0.3),
-                        Math.max(Math.ceil(widestOvlTick) + 34, Math.ceil(ovlTitleW) + 6));
+      rightM = Math.min(Math.round(W * 0.3), Math.ceil(widestOvlTick) + 20);
     }
     M = {
-      top: 14 + (CONFIG.valueLabels === false ? 0 : 14),
+      /* only a stack total has to fit up here now */
+      top: (CONFIG.valueLabels === false ? 6 : 18),
       right: rightM,
-      bottom: 30 + rotReserve,
+      bottom: 12 + catLines * CAT_LH,
       left: Math.ceil(widestVal) + 14,
     };
-    M._numeric = numeric; M._rotReserve = rotReserve;
   }
+  M._numeric = numeric;
 
   /* ---------- size ---------- */
   const rowH = barRowHeight();
+  const chromeH = titleH + legendH;
   const H = HORIZ
-    ? M.top + legendH + ROWS.length * rowH + M.bottom
+    ? chromeH + M.top + ROWS.length * rowH + M.bottom
     : CONFIG.height;
   const iw = Math.max(120, W - M.left - M.right);
-  const ih = Math.max(80, H - M.top - M.bottom - legendH);
+  const ih = Math.max(80, H - M.top - M.bottom - chromeH);
 
   svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
 
-  /* ---------- legend, drawn at the top ---------- */
+  /* ---------- axis titles, in their own row ---------- */
+  if (titleH){
+    const ty = 13;
+    if (CONFIG.vTitle)
+      svg.append("text").attr("class","ytitle").attr("x", 0).attr("y", ty)
+         .text(ellipsis(CONFIG.vTitle, tickFont, ovlActive ? W * 0.5 : W));
+    if (ovlActive)
+      svg.append("text").attr("class","ytitle").attr("x", W).attr("y", ty)
+         .attr("text-anchor","end")
+         .text(ellipsis(OVL.title || OVL.series, tickFont, W * 0.42));
+  }
+
+  /* ---------- legend, under the title row ---------- */
   if (legendRows.length){
-    const lg = svg.append("g").attr("class","legend").attr("transform", `translate(0,10)`);
+    const lg = svg.append("g").attr("class","legend")
+                  .attr("transform", `translate(0,${titleH + 10})`);
     legendRows.forEach((row, ri) => {
       let cx = 0;
       row.forEach(it => {
@@ -592,7 +651,7 @@ function render(){
     });
   }
 
-  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top + legendH})`);
+  const g = svg.append("g").attr("transform", `translate(${M.left},${chromeH + M.top})`);
 
   /* ---------- scales ---------- */
   const cat = d3.scaleBand()
@@ -661,28 +720,26 @@ function render(){
       .append("title").text(d => d);
     g.append("g").attr("class","axis").attr("transform",`translate(0,${ih})`)
       .call(d3.axisBottom(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
-    /* clear of the tick row above and of the SVG's bottom edge — at -2 the
-       descenders were painting 2px outside the box, which the iframe clips */
-    g.append("text").attr("class","ytitle")
-      .attr("x", 0).attr("y", ih + M.bottom - 7).attr("text-anchor","start")
-      .attr("fill", MUTED).text(CONFIG.vTitle);
   } else {
-    /* thin numeric ticks rather than rotating them; rotate text ones */
+    /* Numeric categories thin out; text categories wrap onto up to catLines
+       horizontal lines. Nothing tilts — an angled label costs width as well as
+       height and reads slower than two short stacked lines. */
     const every = Math.max(1, Math.ceil((cat.domain().length * 44) / iw));
     const keep  = M._numeric ? cat.domain().filter((_,i) => i % every === 0) : cat.domain();
     const ax = catAxisG.attr("transform",`translate(0,${ih})`)
-      .call(d3.axisBottom(cat).tickValues(keep).tickSize(0).tickPadding(8));
-    if (!M._numeric && cat.bandwidth() < Math.max(...keep.map(k => textW(k, catFont))) + 6){
-      ax.selectAll("text")
-        .attr("transform","rotate(-35)").attr("text-anchor","end")
-        .attr("dx","-0.4em").attr("dy","0.6em")
-        .text(d => ellipsis(d, catFont, M._rotReserve * 1.6))
-        .append("title").text(d => d);
+      .call(d3.axisBottom(cat).tickValues(keep).tickSize(0).tickPadding(7));
+    if (!M._numeric){
+      ax.selectAll("text").each(function(d){
+        const t = d3.select(this);
+        const lines = wrapLabel(d, Math.max(30, cat.bandwidth() - 2), catFont, catLines);
+        t.text(null);
+        lines.forEach((ln, i) =>
+          t.append("tspan").attr("x", 0).attr("dy", i ? `${CAT_LH}px` : null).text(ln));
+        t.append("title").text(d);
+      });
     }
     g.append("g").attr("class","axis")
       .call(d3.axisLeft(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
-    g.append("text").attr("class","ytitle")
-      .attr("x", -M.left + 2).attr("y", -M.top + 11).text(CONFIG.vTitle);
   }
 
   /* ---------- bars ---------- */
@@ -714,6 +771,45 @@ function render(){
       .attr("y", HORIZ ? 11 : vpos(r.value) - 6)
       .attr("text-anchor", HORIZ ? "start" : "end").text(r.label);
   });
+
+  /* ---------- labels inside the stack segments ----------
+     The one label position a stacked bar actually needs: the segment values
+     are otherwise only reachable through the tooltip or the table. Each label
+     is fit-tested against its own segment in both directions and simply not
+     drawn where it does not fit, so a thin segment stays clean rather than
+     spilling across its neighbours. Ink or white is chosen per segment from
+     the fill's luminance, which is also what keeps slot 6 amber readable. */
+  if (STACKED && CONFIG.segmentLabels){
+    const segFont = `500 11.5px ${bodyFont}`;
+    const asShare = CONFIG.segmentLabelFormat === "share"
+      || (CONFIG.segmentLabelFormat == null && PCT);
+    const shareFmt = f(`.${CONFIG.shareDecimals ?? 0}f`);
+
+    const placed = SEGS.map(d => {
+      const lbl = asShare
+        ? (d.r.total ? shareFmt(d.v / d.r.total * 100) + "%" : null)
+        : fmt(d.v);
+      if (!lbl) return null;
+      const a = vpos(d.lo), b = vpos(d.hi);
+      const along = Math.abs(b - a);          // segment length, on the value axis
+      const across = cat.bandwidth();         // bar thickness
+      const w = textW(lbl, segFont);
+      const fits = HORIZ ? (along >= w + 10 && across >= 15)
+                         : (along >= 16 && across >= w + 8);
+      if (!fits) return null;
+      return {d, lbl, mid: (a + b) / 2, cpos: cat(String(d.r.cat)) + across / 2};
+    }).filter(Boolean);
+
+    g.append("g").selectAll("text").data(placed).join("text")
+      .attr("class","seglabel")
+      .attr("fill", p => readableOn(p.d.s.color))
+      .attr("x", p => HORIZ ? p.mid : p.cpos)
+      .attr("y", p => HORIZ ? p.cpos : p.mid)
+      .attr("dy", "0.34em").attr("text-anchor", "middle")
+      .text(p => p.lbl);
+  } else if (CONFIG.segmentLabels && !STACKED) {
+    console.warn('segmentLabels applies to stacked charts; in single and grouped modes use valueLabels, which labels the bar end.');
+  }
 
   /* ---------- value labels ---------- */
   const wantLabels = CONFIG.valueLabels === true
@@ -762,9 +858,7 @@ function render(){
     const colour = RAMP[SERIES.length % RAMP.length];
     g.append("g").attr("class","axis").attr("transform",`translate(${iw},0)`)
       .call(d3.axisRight(y2).ticks(4).tickFormat(fmtOvl).tickSize(0).tickPadding(8));
-    g.append("text").attr("class","ytitle")
-      .attr("x", iw).attr("y", -M.top + 11).attr("text-anchor","start")
-      .text(ellipsis(OVL.title || OVL.series, tickFont, Math.max(30, M.right - 4)));
+    /* its title is drawn in the title row at the top of the SVG, right-aligned */
     g.append("path").attr("class","overlay").attr("stroke", colour)
       .attr("d", d3.line().x(p => cx(p.r)).y(p => y2(p.val))(pts));
     g.append("g").selectAll("circle").data(pts).join("circle")
@@ -928,13 +1022,29 @@ function paintSvgNode(ctx, el){
     const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
     const dxAttr = el.getAttribute("dx");
     const dx = dxAttr ? (/em$/.test(dxAttr) ? parseFloat(dxAttr) * fs : parseFloat(dxAttr)) : 0;
-    /* a <title> child is a tooltip, not drawn text */
-    ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
-                 num("x") + dx, num("y") + dy);
+    /* Wrapped category labels are tspans, each carrying its own dy. Drawing
+       el.textContent would run every line together on one baseline. */
+    const spans = el.querySelectorAll(":scope > tspan");
+    if (spans.length){
+      let ty = num("y") + dy;
+      spans.forEach(ts => {
+        const tdy = ts.getAttribute("dy");
+        if (tdy) ty += /em$/.test(tdy) ? parseFloat(tdy) * fs : parseFloat(tdy);
+        const tx = ts.getAttribute("x") != null ? parseFloat(ts.getAttribute("x")) : num("x");
+        ctx.fillText(ts.textContent, tx + dx, ty);
+      });
+    } else {
+      /* a <title> child is a tooltip, not drawn text */
+      ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
+                   num("x") + dx, num("y") + dy);
+    }
     ctx.textAlign = "left";
   }
 
-  for (const child of el.children) if ((child.tagName||"").toLowerCase() !== "title") paintSvgNode(ctx, child);
+  for (const child of el.children){
+    const t = (child.tagName||"").toLowerCase();
+    if (t !== "title" && t !== "tspan") paintSvgNode(ctx, child);   /* both handled above */
+  }
   ctx.restore();
 }
 
@@ -1069,6 +1179,7 @@ new ResizeObserver(entries => {
   const state = {
     dataset: "ranking", orient: "bar", mode: "stacked",
     sort: "desc", labels: "auto", forecast: true, overlay: false, highlight: false,
+    segments: true,
   };
 
   const GROUPS = [
@@ -1077,7 +1188,7 @@ new ResizeObserver(entries => {
     {key:"mode",    label:"Mode",        opts:[["single","Single"],["grouped","Grouped"],["stacked","Stacked"],["stacked100","100%"]]},
     {key:"sort",    label:"Sort",        opts:[["none","None"],["desc","Largest first"],["asc","Smallest first"]]},
     {key:"labels",  label:"Value labels",opts:[["auto","Auto"],["true","On"],["false","Off"]]},
-    {key:"extra",   label:"Devices",     opts:[["forecast","Forecast"],["overlay","Second axis"],["highlight","Highlight"]], toggle:true},
+    {key:"extra",   label:"Devices",     opts:[["forecast","Forecast"],["overlay","Second axis"],["highlight","Highlight"],["segments","Segment labels"]], toggle:true},
   ];
 
   const bar = document.getElementById("controls");
@@ -1115,6 +1226,8 @@ new ResizeObserver(entries => {
     const useOverlay = state.overlay && timeAxis
                        && state.orient === "column" && state.mode !== "stacked100";
     const useForecast = state.forecast && timeAxis;
+    const stacked = state.mode === "stacked" || state.mode === "stacked100";
+    const useSegments = state.segments && stacked;
 
     /* swap the data in place — the template holds a const binding to it */
     DATA.categories = ds.categories.slice();
@@ -1129,6 +1242,7 @@ new ResizeObserver(entries => {
       highlight: (state.highlight && !timeAxis) ? ["Lesotho","Malawi"] : [],
       forecastFrom: useForecast ? ds.forecastFrom : null,
       forecastShade: true,
+      segmentLabels: useSegments,
       overlayLine: useOverlay ? ds.overlay : null,
       excludeSeries: (timeAxis && !useOverlay) ? ["Index"] : [],
       height: 440, rowHeight: null, decimals: timeAxis ? 0 : 0,
@@ -1149,6 +1263,7 @@ new ResizeObserver(entries => {
         if (v === "forecast") off = !timeAxis;
         if (v === "overlay")  off = !timeAxis || state.orient !== "column" || state.mode === "stacked100";
         if (v === "highlight") off = timeAxis;
+        if (v === "segments")  off = !stacked;
         b.disabled = off;
       });
     });
@@ -1165,7 +1280,8 @@ new ResizeObserver(entries => {
   }
 
   function configText(){
-    const keys = ["orient","mode","sort","valueLabels","stackTotals","highlight",
+    const keys = ["orient","mode","sort","valueLabels","stackTotals","segmentLabels",
+                  "segmentLabelFormat","catLines","highlight",
                   "forecastFrom","forecastShade","overlayLine","excludeSeries","height","rowHeight"];
     const lines = keys.map(k => {
       const v = CONFIG[k];
