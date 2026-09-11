@@ -539,17 +539,31 @@ function render(){
   const legendItems = (SERIES.length > 1 ? stackOrder : [])
     .concat(ovlActive ? [{name: OVL.series, color: RAMP[SERIES.length % RAMP.length], line: true}] : []);
 
-  const legendRows = [];
-  if (legendItems.length){
+  const layOutLegend = width => {
+    const rows = [];
+    if (!legendItems.length) return rows;
     let row = [], wsum = 0;
     legendItems.forEach(it => {
       const w = textW(it.name, tickFont) + 28;
-      if (row.length && wsum + w > W) { legendRows.push(row); row = []; wsum = 0; }
+      if (row.length && wsum + w > width) { rows.push(row); row = []; wsum = 0; }
       row.push({...it, w}); wsum += w;
     });
-    if (row.length) legendRows.push(row);
-  }
-  const legendH = legendRows.length ? legendRows.length * 18 + 8 : 0;
+    if (row.length) rows.push(row);
+    return rows;
+  };
+  const legendRows = layOutLegend(W);
+
+  /* A column chart's height is fixed by CONFIG.height, so a legend that wraps
+     to a second row simply takes that row from the plot. A bar chart's height
+     is derived from its rows, so a wrapping legend would push the whole SVG
+     taller — it grew 558 to 576 between 520px and 400px wide. Bars therefore
+     reserve the row count the legend needs at the narrow end (340px, roughly a
+     phone article column) and keep it at every width: a little whitespace on a
+     wide screen buys one published iframe height that is right everywhere. */
+  const legendRowCount = HORIZ
+    ? Math.max(legendRows.length, layOutLegend(340).length)
+    : legendRows.length;
+  const legendH = legendRowCount ? legendRowCount * 18 + 8 : 0;
 
   /* ---------- margins ---------- */
   const catFont = tickFont;
