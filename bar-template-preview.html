@@ -498,7 +498,9 @@ function wrapLabel(str, maxW, font, maxLines){
   }
   if (line) lines.push(line);
   if (lines.length > maxLines){
-    const head = lines.slice(0, maxLines - 1);
+    /* the kept lines need trimming too: a single word longer than the band —
+       "Democratic" — went through untouched and overlapped its neighbour */
+    const head = lines.slice(0, maxLines - 1).map(l => ellipsis(l, font, maxW));
     head.push(ellipsis(lines.slice(maxLines - 1).join(" "), font, maxW));
     return head;
   }
@@ -863,8 +865,14 @@ function render(){
         .attr("text-anchor", HORIZ ? "start" : "middle")
         .text(d => fmt(d.total));
     } else if (!STACKED){
-      /* one label per bar; it flips inside when it would fall off the plot */
-      g.append("g").selectAll("text").data(SEGS).join("text")
+      /* One label per bar; it flips inside when it would fall off the plot.
+         Same fit rule as the stack totals: sixteen columns at phone width give
+         each bar about 14px, and a three-digit label needs twenty, so the row
+         is dropped rather than printed on top of itself. */
+      const slot = MODE === "grouped" ? sub.bandwidth() : cat.bandwidth();
+      const widestBarLabel = Math.max(0, ...SEGS.map(d => textW(fmt(d.v), labelFont)));
+      const barLabelsFit = HORIZ ? slot >= 13 : slot >= widestBarLabel + 4;
+      g.append("g").selectAll("text").data(barLabelsFit ? SEGS : []).join("text")
         .each(function(d){
           const end = vpos(d.disp >= 0 ? d.hi : d.lo);
           const lbl = fmt(d.v);
