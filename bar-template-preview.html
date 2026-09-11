@@ -545,9 +545,20 @@ function render(){
        fixed-iframe contract. */
     const numeric = ROWS.every(r => typeof r.cat === "number" || /^\d+$/.test(String(r.cat)));
     const rotReserve = numeric ? 0 : Math.min(72, Math.ceil(widestCat * 0.64));
+    /* The right margin has to hold the second axis's ticks AND its title,
+       which sits at the top of that axis. Sizing it to the ticks alone let
+       a title like "Index (1 = 2010)" run off the edge of the SVG. */
+    let rightM = 12;
+    if (ovlActive){
+      const ovlVals = (DATA.values[OVL.series] || []).filter(x => x != null);
+      const widestOvlTick = Math.max(...ovlVals.map(x => textW(fmtOvl(x), tickFont)), 10);
+      const ovlTitleW = textW(OVL.title || OVL.series, tickFont);
+      rightM = Math.min(Math.round(W * 0.3),
+                        Math.max(Math.ceil(widestOvlTick) + 34, Math.ceil(ovlTitleW) + 6));
+    }
     M = {
       top: 14 + (CONFIG.valueLabels === false ? 0 : 14),
-      right: (ovlActive ? Math.ceil(textW(fmtOvl(0), tickFont)) + 34 : 12),
+      right: rightM,
       bottom: 30 + rotReserve,
       left: Math.ceil(widestVal) + 14,
     };
@@ -650,8 +661,10 @@ function render(){
       .append("title").text(d => d);
     g.append("g").attr("class","axis").attr("transform",`translate(0,${ih})`)
       .call(d3.axisBottom(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+    /* clear of the tick row above and of the SVG's bottom edge — at -2 the
+       descenders were painting 2px outside the box, which the iframe clips */
     g.append("text").attr("class","ytitle")
-      .attr("x", 0).attr("y", ih + M.bottom - 2).attr("text-anchor","start")
+      .attr("x", 0).attr("y", ih + M.bottom - 7).attr("text-anchor","start")
       .attr("fill", MUTED).text(CONFIG.vTitle);
   } else {
     /* thin numeric ticks rather than rotating them; rotate text ones */
@@ -751,7 +764,7 @@ function render(){
       .call(d3.axisRight(y2).ticks(4).tickFormat(fmtOvl).tickSize(0).tickPadding(8));
     g.append("text").attr("class","ytitle")
       .attr("x", iw).attr("y", -M.top + 11).attr("text-anchor","start")
-      .text(OVL.title || OVL.series);
+      .text(ellipsis(OVL.title || OVL.series, tickFont, Math.max(30, M.right - 4)));
     g.append("path").attr("class","overlay").attr("stroke", colour)
       .attr("d", d3.line().x(p => cx(p.r)).y(p => y2(p.val))(pts));
     g.append("g").selectAll("circle").data(pts).join("circle")
@@ -1183,8 +1196,11 @@ new ResizeObserver(entries => {
     const paper = document.querySelector(".paper");
     const shell = document.querySelector(".shell");
     const afi = document.querySelector(".afi");
-    const prev = paper.style.width;
+    const prev = paper.style.width, prevMax = paper.style.maxWidth;
     shell.style.overflow = "hidden";   /* a 1100px probe must not scroll the page */
+    /* .paper is max-width:100%, which silently clamped every probe to the
+       container and returned the same height at all eight widths. */
+    paper.style.maxWidth = "none";
     const hs = [];
     for (const w of [1100,960,860,760,640,560,480,400]){
       paper.style.width = w + "px";
@@ -1192,7 +1208,8 @@ new ResizeObserver(entries => {
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       hs.push(Math.ceil(afi.getBoundingClientRect().height));
     }
-    paper.style.width = prev; shell.style.overflow = ""; render();
+    paper.style.width = prev; paper.style.maxWidth = prevMax;
+    shell.style.overflow = ""; render();
     const tallest = Math.ceil(Math.max(...hs) / 10) * 10;
     hEl.textContent = `iframe height ${tallest}px (tallest of ${hs.join(", ")})`;
   });
