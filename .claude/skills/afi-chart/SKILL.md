@@ -113,7 +113,13 @@ Publish the `.artifact.html` version and list the interpretive decisions — whi
 
 ## Step 6 — Publish, then audit, then measure
 
-Send the standalone `.html` file. The user uploads it to the `afi-charts` repository.
+Publishing is public and the filename becomes a permanent URL, so **confirm the slug with the user before pushing.**
+
+Commit the standalone `.html` file to the repository root and push. Pages deploys from `main` at the root, so the chart goes live about a minute later at `https://african-futures.github.io/afi-charts/<slug>.html`. The `.artifact.html` review copy stays out of the repository.
+
+Updating an existing chart means committing the *same* filename — the URL does not change, so every article already embedding it picks up the new version. Never rename or delete a published file: the name is baked into live articles and renaming breaks them silently.
+
+Anyone without a clone can publish through github.com in the browser instead; `docs/publishing-an-afi-chart-github-pages.md` covers that route.
 
 **Once it is live, open the URL in the browser — this is not optional.** It is the only real render check available, and estimating from a screenshot has produced published errors twice.
 
