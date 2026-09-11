@@ -174,8 +174,12 @@ body{color:var(--chrome-ink)}
 .note{font-size:12px; color:var(--chrome-mute); margin:0}
 .note b{font-weight:600; color:var(--chrome-ink)}
 
-/* the article ground — white in every theme, because that is where it lands */
-.paper{background:#ffffff; border:1px solid var(--paper-line); border-radius:8px;
+/* The article ground — white in every theme, because that is where it lands.
+   The colour has to be restated too: the chrome sets a light body colour for
+   the dark page, and anything in the chart that inherits rather than naming
+   its own colour (the title does) would take it and vanish on white. */
+.paper{background:#ffffff; color:var(--ink);
+  border:1px solid var(--paper-line); border-radius:8px;
   padding:22px 26px 18px; max-width:100%; overflow:hidden}
 .paper .afi{padding-top:0}
 .papercap{display:flex; justify-content:space-between; align-items:baseline; gap:14px;
@@ -489,11 +493,15 @@ function render(){
   const labelFont = `500 12px ${bodyFont}`;
 
   /* ---------- legend: only when more than one series is coloured ---------- */
-  const legendItems = (SERIES.length > 1 ? SERIES.slice() : [])
+  /* The legend follows the reading order of the stack, which is not the same
+     in the two orientations: a column stacks upward, so top-down reading is
+     the reverse of the data order, while a bar stacks left to right, which is
+     the data order already. Reversing both was wrong on bars. The overlaid
+     line is not part of the stack, so it stays at the end either way. */
+  const stackOrder = SERIES.slice();
+  if (STACKED && !HORIZ) stackOrder.reverse();
+  const legendItems = (SERIES.length > 1 ? stackOrder : [])
     .concat(ovlActive ? [{name: OVL.series, color: RAMP[SERIES.length % RAMP.length], line: true}] : []);
-  /* Stacks read top-down on the page, so the legend does too — the swatch
-     order matches the visual order rather than the data order. */
-  if (STACKED) legendItems.reverse();
 
   const legendRows = [];
   if (legendItems.length){
@@ -526,7 +534,9 @@ function render(){
       top: 10,
       right: Math.max(12, Math.min(Math.ceil(widestEndLabel) + 14, Math.round(W * 0.25)) + 4),
       bottom: 44,           /* value ticks, then the axis title under them */
-      left: Math.min(Math.ceil(widestCat) + 10, Math.round(W * 0.42)),
+      /* 12px of gutter, so the ellipsis budget below (M.left - 12) comes out
+         at exactly the widest label and short labels are never truncated. */
+      left: Math.min(Math.ceil(widestCat) + 12, Math.round(W * 0.42)),
     };
   } else {
     /* Columns with text categories need room under the axis for a rotated
@@ -636,7 +646,7 @@ function render(){
   const catAxisG = g.append("g").attr("class","axis");
   if (HORIZ){
     catAxisG.call(d3.axisLeft(cat).tickSize(0).tickPadding(8));
-    catAxisG.selectAll("text").text(d => ellipsis(d, catFont, M.left - 12))
+    catAxisG.selectAll("text").text(d => ellipsis(d, catFont, Math.max(28, M.left - 12)))
       .append("title").text(d => d);
     g.append("g").attr("class","axis").attr("transform",`translate(0,${ih})`)
       .call(d3.axisBottom(v).ticks(6).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
@@ -809,7 +819,13 @@ const btn = document.getElementById("toggle"),
    clipped — swapping keeps everything visible at one iframe height. */
 btn.addEventListener("click", () => {
   const showTable = tv.hasAttribute("hidden");
-  tv.style.maxHeight = (render._H || CONFIG.height) + "px";
+  /* Height-neutral swap: the table takes exactly the plot's box, whether the
+     rows overflow it (scroll) or fall short of it (whitespace). A table that
+     is shorter than the chart would otherwise shrink the whole figure, and
+     the iframe is a fixed box — the gap shows up as a hole in the article. */
+  const boxH = (render._H || CONFIG.height) + "px";
+  tv.style.maxHeight = boxH;
+  tv.style.height    = boxH;
   if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
   else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
   btn.textContent = showTable ? "Show chart" : "Show data";
@@ -1079,10 +1095,13 @@ new ResizeObserver(entries => {
 
     /* rules the template enforces with a console warning — enforced here so
        the preview never shows a form the house rules disallow */
+    /* Gate these at the point of use, never by writing back into `state` —
+       zeroing state.forecast on the ranking dataset left it off for good once
+       the user switched to the time series. */
     if (timeAxis && state.sort !== "none") state.sort = "none";
-    if (state.orient === "bar") state.overlay = false;
-    if (!timeAxis) state.forecast = false;
-    if (state.mode === "stacked100") state.overlay = false;
+    const useOverlay = state.overlay && timeAxis
+                       && state.orient === "column" && state.mode !== "stacked100";
+    const useForecast = state.forecast && timeAxis;
 
     /* swap the data in place — the template holds a const binding to it */
     DATA.categories = ds.categories.slice();
@@ -1095,10 +1114,10 @@ new ResizeObserver(entries => {
       orient: state.orient, mode: state.mode, sort: state.sort,
       valueLabels: state.labels === "auto" ? "auto" : state.labels === "true",
       highlight: (state.highlight && !timeAxis) ? ["Lesotho","Malawi"] : [],
-      forecastFrom: (state.forecast && timeAxis) ? ds.forecastFrom : null,
+      forecastFrom: useForecast ? ds.forecastFrom : null,
       forecastShade: true,
-      overlayLine: (state.overlay && timeAxis && state.orient === "column") ? ds.overlay : null,
-      excludeSeries: (timeAxis && !(state.overlay && state.orient === "column")) ? ["Index"] : [],
+      overlayLine: useOverlay ? ds.overlay : null,
+      excludeSeries: (timeAxis && !useOverlay) ? ["Index"] : [],
       height: 440, rowHeight: null, decimals: timeAxis ? 0 : 0,
     });
 
@@ -1147,10 +1166,18 @@ new ResizeObserver(entries => {
     return "const CONFIG = {\n" + lines.join("\n") + "\n};";
   }
 
+  /* Measure after the webfont has settled, not before: a first-load reading
+     taken against the fallback face reported a height 350px out. */
   function showHeight(){
-    const h = Math.ceil(document.querySelector(".afi").getBoundingClientRect().height);
-    hEl.textContent = `${h}px at this width`;
+    const read = () => {
+      const h = Math.ceil(document.querySelector(".afi").getBoundingClientRect().height);
+      hEl.textContent = `${h}px at this width`;
+    };
+    read();
+    document.fonts.ready.then(() => setTimeout(read, 60));
   }
+  /* and keep it honest as the pane is resized */
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(showHeight, 200); });
 
   document.getElementById("measure").addEventListener("click", async () => {
     const paper = document.querySelector(".paper");
