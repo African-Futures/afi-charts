@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* ============================================================
+   AFI chart — bar / column template
+   Design tokens are the agreed AFI system. Do not hand-edit
+   colours here; change them in one place and rebuild.
+
+   Same shell as the line template: same tokens, same footer,
+   same table view, same PNG export, same height contract.
+   ============================================================ */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:balance}
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.zeroline{stroke:var(--label); stroke-width:1; shape-rendering:crispEdges}
+.bar{shape-rendering:crispEdges}
+.bar.dim{opacity:.28}                /* non-highlighted bars, when highlight is in use */
+.vlabel{font-size:12px; font-weight:500}
+.vlabel.inside{fill:var(--surface)}
+.seglabel{font-size:11.5px; font-weight:500}   /* fill set per segment, from its luminance */
+.totlabel{font-size:12px; font-weight:600; fill:var(--ink)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+/* band marking a threshold region on the value axis */
+.vband{fill:var(--panel)}
+.vbandline{stroke:var(--grid); stroke-width:1; stroke-dasharray:4 3}
+.vbandlabel{font-size:11px; fill:var(--muted)}
+.vbandtick{font-size:12px; fill:var(--muted)}
+/* reference line (an average, a target) — dashed, house rule */
+.refline{stroke:var(--label); stroke-width:1.5; stroke-dasharray:6 4}
+.reflabel{font-size:11px; fill:var(--label)}
+/* overlaid line on a second axis */
+.overlay{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.overlaydot{stroke:var(--surface); stroke-width:1.5}
+.legend text{font-size:11.5px; fill:var(--label)}
+.hoverband{fill:var(--ink); opacity:.05}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip tr.tot td{border-top:1px solid var(--grid); padding-top:4px; font-weight:600}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* max-height set from the SVG height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   ============================================================ */
+const CONFIG = {
+  title:    "Illustrative example — AFI bar chart template",
+  subtitle: "Stand-in data, not a published figure. Replace DATA, the title and the source line before this goes anywhere near an article.",
+  source:   "Illustrative data — replace before publishing",
+  sourceUrl: null,
+  vTitle:   "Thousands of people",       // short value-axis title
+
+  /* ---- form ---- */
+  orient:   "bar",        // "bar" = horizontal (categories down the side)
+                          // "column" = vertical (categories along the bottom)
+  mode:     "stacked",    // "single" | "grouped" | "stacked" | "stacked100"
+  sort:     "desc",       // "none" | "desc" | "asc" — by category total.
+                          // Use "none" for a time axis; ordering years by size is a lie.
+
+  /* ---- emphasis ---- */
+  /* Single-series charts are navy. Name categories here to colour them
+     orange and grey the rest — the honest way to make one bar the point. */
+  highlight: [],
+
+  /* ---- labels ---- */
+  valueLabels: "auto",    // true | false | "auto" (on for single, off for grouped)
+  stackTotals: true,      // net-sum label at the end of each stack
+  /* Stacked charts only: the value inside each segment, drawn where it fits
+     and silently skipped where it does not. Independent of valueLabels, which
+     governs the label at the bar's end. */
+  segmentLabels: false,
+  segmentLabelFormat: null,  // "value" | "share"; null = share on 100%, value otherwise
+  shareDecimals: 0,
+  catLines:    2,         // columns: lines a wrapped category label may use (1–3)
+  decimals:    0,         // value labels, tooltip and table
+  axisDecimals: 0,        // value-axis ticks
+  valuePrefix: "",        // "$"
+  valueSuffix: "",        // "%", "B", "M" — units live in the format, house rule
+  valueScale:  1,         // divide raw values by this before formatting (1e6 → "M")
+
+  /* ---- value axis ---- */
+  /* There is no vMin. A bar encodes length, so its axis starts at zero;
+     a truncated bar axis is a misread waiting to happen. Negative data
+     extends the domain below zero automatically and a zero line is drawn. */
+  vMax:   null,           // explicit ceiling for headroom; null fits the data
+  /* Shaded threshold regions on the value axis. `to: null` runs to the top. */
+  valueBands: [],         // [{from: 50, to: null, label: "Majority"}]
+  /* Dashed reference lines across the categories — an average, a target. */
+  refLines: [],           // [{value: 42, label: "African average"}]
+
+  /* ---- time-series columns only ---- */
+  forecastFrom:  null,    // first forecast category (a year); null disables entirely
+  forecastShade: false,   // false = dotted boundary line only, no shading
+
+  /* ---- second axis (columns only) ---- */
+  /* The grouped-columns-plus-line pattern. Names one series in DATA that is
+     drawn as a line on its own right-hand axis instead of as bars. */
+  overlayLine: null,      // {series: "Trade balance", title: "US$bn", decimals: 1}
+
+  /* ---- series handling ---- */
+  excludeSeries: [],      // dropped from chart, legend and table entirely
+
+  /* ---- size ---- */
+  height:    440,         // columns: SVG height in px. Bars: ignored, see rowHeight.
+  rowHeight: null,        // bars: px per category. null picks a sensible default.
+};
+
+const DATA = /*__DATA__*/ {
+  /* `categories` for text categories; `years` is accepted as an alias so an
+     IFs extract drops in unchanged. Values are index-aligned to it. */
+  categories: ["Zimbabwe","Mozambique","Lesotho","Malawi","Nigeria",
+               "Democratic Republic of the Congo","Eswatini","Zambia"],
+  series: [{name:"Category 1"},{name:"Category 2"},{name:"Category 3"}],
+  values: {
+    "Category 1": [ 412, 268, 191, 143,  96,  74,  61,  48],
+    "Category 2": [ 188, 121,  84,  77,  63,  41,  29,  22],
+    "Category 3": [  96,  57,  38,  31, null, 26,  17,  14],
+  }
+};
+
+/* ============================================================
+   AFI design system — shared by every chart type.
+   ============================================================ */
+const RAMP = ["#172859","#e67500","#004ea2","#389d63","#892e88","#e79f2b","#9e234f","#5791cd"];
+const INK="#172859", LABEL="#58585a", MUTED="#7d8899", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff";
+
+/* ---- normalise the input ---- */
+/* `categories` for text categories; `years` is accepted as an alias, and it is
+   resolved on every pass rather than captured once, so swapping DATA takes. */
+function cats(){
+  const c = DATA.categories || DATA.years;
+  if (!c) throw new Error("DATA needs a `categories` (or `years`) array.");
+  return c;
+}
+
+/* Everything below is derived from CONFIG rather than fixed at load, so the
+   same file can be re-read after a CONFIG change without a reload. That is
+   what the review harness uses to flip orientation and mode live. */
+let HORIZ, MODE, STACKED, PCT, OVL, ovlActive, SERIES, ROWS, SEGS, VDOM;
+let warned = "";
+
+function prepare(){
+  HORIZ   = CONFIG.orient === "bar";
+  MODE    = CONFIG.mode;
+  STACKED = MODE === "stacked" || MODE === "stacked100";
+  PCT     = MODE === "stacked100";
+
+  /* the overlaid line is a series, but it is not a bar */
+  OVL = CONFIG.overlayLine || null;
+  ovlActive = !!(OVL && !HORIZ && DATA.values[OVL.series]);
+
+  /* excludeSeries drops a series from chart, legend and table alike. It filters
+     rather than mutates DATA, so the choice stays reversible. */
+  const kept = DATA.series.filter(s => !(CONFIG.excludeSeries || []).includes(s.name));
+  const barSeries = kept.filter(s => !(ovlActive && s.name === OVL.series));
+  const USED = MODE === "single" ? barSeries.slice(0,1) : barSeries;
+
+  /* Slot 6 (amber) is 2.24:1 on white. Every bar here carries a tooltip and a
+     table view, which is the relief channel the ramp note requires. */
+  SERIES = USED.map((s,i) => ({...s, color: USED.length === 1 ? RAMP[0] : RAMP[i % RAMP.length]}));
+
+  ROWS = buildRows();
+  SEGS = buildSegments(ROWS);
+  VDOM = valueDomain(SEGS);
+
+  /* warn once per distinct problem, not once per render */
+  const msgs = [];
+  if (OVL && HORIZ) msgs.push("overlayLine is a column-chart device; ignored in bar orientation.");
+  if (kept.length !== DATA.series.length)
+    msgs.push(`excludeSeries dropped ${DATA.series.length - kept.length} series.`);
+  if (MODE === "single" && barSeries.length > 1)
+    msgs.push(`mode "single" with ${barSeries.length} series — only the first is drawn. Use "grouped" or "stacked".`);
+  if (USED.length > RAMP.length)
+    msgs.push(`${USED.length} series exceeds the ${RAMP.length}-slot ramp — fold the tail into "Other" or facet.`);
+  if (STACKED && SERIES.some(s => (DATA.values[s.name]||[]).some(v => v != null && v < 0)))
+    msgs.push("Negative values in a stacked chart — segments will overlap the baseline. Use grouped.");
+  if (HORIZ) {
+    const est = ROWS.length * barRowHeight() + 80;
+    if (est > 700) msgs.push(
+      `${ROWS.length} categories × ${SERIES.length} series comes to about ${est}px of chart. ` +
+      `Past roughly 700px a bar chart stops being readable in an article — cut the tail into ` +
+      `"Other", facet it, or put the categories on a column axis.`);
+  }
+  if (CONFIG.sort !== "none" && ROWS.every(r => /^\d{4}$/.test(String(r.cat))))
+    msgs.push(`sort "${CONFIG.sort}" on a year axis — ordering years by size is a lie. Use sort "none".`);
+  const key = msgs.join("|");
+  if (key && key !== warned) { msgs.forEach(m => console.warn(m)); warned = key; }
+}
+
+/* ---- formatting ---- */
+const scaleV = v => v / (CONFIG.valueScale || 1);
+const fmtCache = new Map();
+const f = spec => { if (!fmtCache.has(spec)) fmtCache.set(spec, d3.format(spec)); return fmtCache.get(spec); };
+const fmt   = v => v == null ? "—"
+  : (CONFIG.valuePrefix||"") + f(`,.${CONFIG.decimals}f`)(scaleV(v)) + (CONFIG.valueSuffix||"");
+const fmtAxis = v => PCT ? f(`,.${CONFIG.axisDecimals}f`)(v) + "%"
+  : (CONFIG.valuePrefix||"") + f(`,.${CONFIG.axisDecimals}f`)(scaleV(v)) + (CONFIG.valueSuffix||"");
+const fmtOvl = v => v == null ? "—" : f(`,.${(OVL && OVL.decimals) ?? 1}f`)(v);
+
+/* ============================================================
+   Layout maths, kept free of the DOM so it can be tested.
+   ============================================================ */
+
+/* One row per category: its index into DATA, its total, and its segments. */
+function buildRows(){
+  const rows = cats().map((cat, i) => {
+    const vals  = SERIES.map(s => DATA.values[s.name][i]);
+    const total = vals.reduce((t,v) => t + (v ?? 0), 0);
+    return {cat, i, total, vals};
+  });
+  if (CONFIG.sort === "desc") rows.sort((a,b) => b.total - a.total);
+  if (CONFIG.sort === "asc")  rows.sort((a,b) => a.total - b.total);
+  return rows;
+}
+
+/* Every drawn rectangle, in value units, whatever the mode.
+   `lo`/`hi` are positions on the value axis; `sub` is the slot inside the
+   band for grouped mode. One shape for four modes keeps the drawing code
+   and the geometry tests honest with each other. */
+function buildSegments(rows){
+  const segs = [];
+  rows.forEach(r => {
+    let acc = 0;
+    r.vals.forEach((v, si) => {
+      if (v == null) return;
+      const disp = PCT ? (r.total ? v / r.total * 100 : 0) : v;
+      if (STACKED) { segs.push({r, s: SERIES[si], si, v, disp, lo: acc, hi: acc + disp, sub: 0}); acc += disp; }
+      else segs.push({r, s: SERIES[si], si, v, disp,
+                      lo: Math.min(0, disp), hi: Math.max(0, disp),
+                      sub: MODE === "grouped" ? si : 0});
+    });
+  });
+  return segs;
+}
+
+/* The value domain. Always anchored at zero; only the far end is open. */
+function valueDomain(segs){
+  if (PCT) return [0, 100];
+  const lo = Math.min(0, d3.min(segs, d => d.lo) ?? 0);
+  let   hi = Math.max(0, d3.max(segs, d => d.hi) ?? 0);
+  (CONFIG.refLines || []).forEach(r => { if (r.value > hi) hi = r.value; });
+  (CONFIG.valueBands || []).forEach(b => { if (b.from != null && b.from > hi) hi = b.from; });
+  if (CONFIG.vMax != null) hi = CONFIG.vMax;
+  if (lo === 0 && hi === 0) hi = 1;
+  return [lo, hi];
+}
+
+/* Bars grow down the page, so their height comes from the data, not from
+   CONFIG.height. It is still one constant number at every screen width,
+   which is all the fixed iframe needs. */
+function barRowHeight(){
+  if (CONFIG.rowHeight) return CONFIG.rowHeight;
+  return MODE === "grouped" ? Math.max(26, 13 * SERIES.length + 14) : 30;
+}
+
+/* ---- scaffolding ---- */
+document.getElementById("title").textContent = CONFIG.title;
+document.getElementById("subtitle").textContent = CONFIG.subtitle;
+document.getElementById("source").innerHTML =
+  "Source: " + (CONFIG.sourceUrl
+    ? `<a href="${CONFIG.sourceUrl}" target="_blank" rel="noopener">${CONFIG.source}</a>`
+    : CONFIG.source);
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+let W = 0;
+
+/* text measurement, shared */
+function probeCtx(){
+  return probeCtx._c || (probeCtx._c = document.createElement("canvas").getContext("2d"));
+}
+function textW(str, font){ const c = probeCtx(); c.font = font; return c.measureText(String(str)).width; }
+/* Greedy word wrap to at most `maxLines`; anything that still will not fit is
+   folded into the last line and ellipsised, so a long name degrades rather
+   than overflowing into its neighbour. */
+function wrapLabel(str, maxW, font, maxLines){
+  const words = String(str).split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words){
+    const t = line ? line + " " + w : w;
+    if (line && textW(t, font) > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines){
+    /* the kept lines need trimming too: a single word longer than the band —
+       "Democratic" — went through untouched and overlapped its neighbour */
+    const head = lines.slice(0, maxLines - 1).map(l => ellipsis(l, font, maxW));
+    head.push(ellipsis(lines.slice(maxLines - 1).join(" "), font, maxW));
+    return head;
+  }
+  return lines.map(l => ellipsis(l, font, maxW));   // a single long word
+}
+
+function ellipsis(str, font, maxW){
+  if (textW(str, font) <= maxW) return String(str);
+  let s = String(str);
+  while (s.length > 1 && textW(s + "…", font) > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+/* white text on a dark bar, ink on a light one */
+function readableOn(hex){
+  const n = parseInt(hex.slice(1), 16);
+  const lin = c => { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const L = 0.2126*lin(n>>16 & 255) + 0.7152*lin(n>>8 & 255) + 0.0722*lin(n & 255);
+  return L > 0.45 ? INK : SURFACE;
+}
+
+function render(){
+  prepare();
+  const node = document.querySelector(".afi");
+  W = node.clientWidth || 780;
+  const narrow = W < 560;
+  const bodyFont = getComputedStyle(document.body).fontFamily;
+  const tickFont  = `400 12px ${bodyFont}`;
+  const labelFont = `500 12px ${bodyFont}`;
+
+  /* ---------- legend: only when more than one series is coloured ---------- */
+  /* The legend follows the reading order of the stack, which is not the same
+     in the two orientations: a column stacks upward, so top-down reading is
+     the reverse of the data order, while a bar stacks left to right, which is
+     the data order already. Reversing both was wrong on bars. The overlaid
+     line is not part of the stack, so it stays at the end either way. */
+  const stackOrder = SERIES.slice();
+  if (STACKED && !HORIZ) stackOrder.reverse();
+  const legendItems = (SERIES.length > 1 ? stackOrder : [])
+    .concat(ovlActive ? [{name: OVL.series, color: RAMP[SERIES.length % RAMP.length], line: true}] : []);
+
+  const layOutLegend = width => {
+    const rows = [];
+    if (!legendItems.length) return rows;
+    let row = [], wsum = 0;
+    legendItems.forEach(it => {
+      const w = textW(it.name, tickFont) + 28;
+      if (row.length && wsum + w > width) { rows.push(row); row = []; wsum = 0; }
+      row.push({...it, w}); wsum += w;
+    });
+    if (row.length) rows.push(row);
+    return rows;
+  };
+  const legendRows = layOutLegend(W);
+
+  /* A column chart's height is fixed by CONFIG.height, so a legend that wraps
+     to a second row simply takes that row from the plot. A bar chart's height
+     is derived from its rows, so a wrapping legend would push the whole SVG
+     taller — it grew 558 to 576 between 520px and 400px wide. Bars therefore
+     reserve the row count the legend needs at the narrow end (340px, roughly a
+     phone article column) and keep it at every width: a little whitespace on a
+     wide screen buys one published iframe height that is right everywhere. */
+  const legendRowCount = HORIZ
+    ? Math.max(legendRows.length, layOutLegend(340).length)
+    : legendRows.length;
+  const legendH = legendRowCount ? legendRowCount * 18 + 8 : 0;
+
+  /* ---------- margins ---------- */
+  const catFont = tickFont;
+  const catLabels = ROWS.map(r => String(r.cat));
+  const widestCat = Math.max(0, ...catLabels.map(c => textW(c, catFont)));
+  const widestVal = Math.max(0, ...[VDOM[0], VDOM[1]].map(v => textW(fmtAxis(v), tickFont)));
+
+  /* value labels sit outside the bar end, so the far margin has to hold one */
+  const widestEndLabel = (CONFIG.valueLabels === false) ? 0
+    : Math.max(0, ...ROWS.map(r => {
+        const finite = r.vals.filter(x => x != null);
+        return textW(fmt(STACKED ? r.total : (finite.length ? Math.max(...finite) : 0)), labelFont);
+      }));
+
+  /* The axis title gets its own reserved row at the very top of the SVG,
+     above the legend and outside the plot entirely. It used to live in the
+     top margin, positioned relative to a margin that changed size with the
+     value-label setting — which is how it ended up sitting on the top
+     gridline and through the topmost tick. A row of its own cannot collide
+     with anything, at any width, in any configuration. */
+  const titleH = (CONFIG.vTitle || ovlActive) ? 20 : 0;
+
+  /* The forecast annotation gets a reserved strip immediately above the plot
+     rather than a position inside it. Drawn inside, it sat over whatever the
+     bars happened to be doing — on a 100% stack, where every column fills the
+     full height, it landed straight on a segment label. */
+  const fcH = (!HORIZ && CONFIG.forecastFrom != null) ? 16 : 0;
+
+  const numeric = ROWS.every(r => typeof r.cat === "number" || /^\d+$/.test(String(r.cat)));
+  /* Column category labels wrap onto up to `catLines` horizontal lines rather
+     than tilting. Angled labels cost width as well as height — the plot has to
+     give up space on both sides for the overhang — and they are slower to read.
+     A fixed line allowance also keeps the SVG height constant across widths. */
+  const catLines = numeric ? 1 : Math.min(3, Math.max(1, CONFIG.catLines ?? 2));
+  const CAT_LH = 14;
+
+  let M;
+  if (HORIZ){
+    M = {
+      top: 6,
+      right: Math.max(12, Math.min(Math.ceil(widestEndLabel) + 14, Math.round(W * 0.25)) + 4),
+      bottom: 26,           /* the value ticks; the title is in its own row now */
+      /* 12px of gutter, so the ellipsis budget below (M.left - 12) comes out
+         at exactly the widest label and short labels are never truncated. */
+      left: Math.min(Math.ceil(widestCat) + 12, Math.round(W * 0.42)),
+    };
+  } else {
+    /* The right margin has to hold the second axis's ticks AND its title,
+       which sits at the top of that axis. Sizing it to the ticks alone let
+       a title like "Index (1 = 2010)" run off the edge of the SVG. */
+    let rightM = 12;
+    if (ovlActive){
+      const ovlVals = (DATA.values[OVL.series] || []).filter(x => x != null);
+      const widestOvlTick = Math.max(...ovlVals.map(x => textW(fmtOvl(x), tickFont)), 10);
+      rightM = Math.min(Math.round(W * 0.3), Math.ceil(widestOvlTick) + 20);
+    }
+    M = {
+      /* only a stack total has to fit up here now */
+      top: (CONFIG.valueLabels === false ? 6 : 18),
+      right: rightM,
+      bottom: 12 + catLines * CAT_LH,
+      left: Math.ceil(widestVal) + 14,
+    };
+  }
+  M._numeric = numeric;
+
+  /* ---------- size ---------- */
+  const rowH = barRowHeight();
+  const chromeH = titleH + legendH + fcH;
+  const H = HORIZ
+    ? chromeH + M.top + ROWS.length * rowH + M.bottom
+    : CONFIG.height;
+  const iw = Math.max(120, W - M.left - M.right);
+  const ih = Math.max(80, H - M.top - M.bottom - chromeH);
+
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
+
+  /* ---------- axis titles, in their own row ---------- */
+  if (titleH){
+    const ty = 13;
+    if (CONFIG.vTitle)
+      svg.append("text").attr("class","ytitle").attr("x", 0).attr("y", ty)
+         .text(ellipsis(CONFIG.vTitle, tickFont, ovlActive ? W * 0.5 : W));
+    if (ovlActive)
+      svg.append("text").attr("class","ytitle").attr("x", W).attr("y", ty)
+         .attr("text-anchor","end")
+         .text(ellipsis(OVL.title || OVL.series, tickFont, W * 0.42));
+  }
+
+  /* ---------- legend, under the title row ---------- */
+  if (legendRows.length){
+    const lg = svg.append("g").attr("class","legend")
+                  .attr("transform", `translate(0,${titleH + 10})`);
+    legendRows.forEach((row, ri) => {
+      let cx = 0;
+      row.forEach(it => {
+        const gr = lg.append("g").attr("transform", `translate(${cx},${ri*18})`);
+        if (it.line) gr.append("line").attr("x1",0).attr("x2",13).attr("y1",0).attr("y2",0)
+            .attr("stroke", it.color).attr("stroke-width",2);
+        else gr.append("rect").attr("x",0).attr("y",-5).attr("width",11).attr("height",10)
+            .attr("rx",2).attr("fill", it.color);
+        gr.append("text").attr("x",18).attr("dy","0.32em").text(it.name);
+        cx += it.w;
+      });
+    });
+  }
+
+  const g = svg.append("g").attr("transform", `translate(${M.left},${chromeH + M.top})`);
+
+  /* ---------- scales ---------- */
+  const cat = d3.scaleBand()
+      .domain(ROWS.map(r => String(r.cat)))
+      .range([0, HORIZ ? ih : iw])
+      .paddingInner(MODE === "grouped" ? 0.28 : 0.22)
+      .paddingOuter(0.12);
+  const sub = d3.scaleBand()
+      .domain(SERIES.map(s => s.name))
+      .range([0, cat.bandwidth()])
+      .paddingInner(0.12);
+
+  const v = d3.scaleLinear()
+      .domain(VDOM)
+      .range(HORIZ ? [0, iw] : [ih, 0]);
+  if (CONFIG.vMax == null && !PCT) v.nice(5);
+
+  const vpos = val => v(val);                      // value → px on the value axis
+  const acrossLen = HORIZ ? ih : iw;               // length of the category axis
+  const depthLen  = HORIZ ? iw : ih;               // length of the value axis
+
+  /* ---------- threshold bands on the value axis ---------- */
+  (CONFIG.valueBands || []).forEach(b => {
+    const a = vpos(b.to ?? v.domain()[1]), c = vpos(b.from ?? v.domain()[0]);
+    const lo = Math.min(a,c), size = Math.abs(c - a);
+    g.append("rect").attr("class","vband")
+      .attr("x", HORIZ ? lo : 0).attr("y", HORIZ ? 0 : lo)
+      .attr("width",  HORIZ ? size : iw)
+      .attr("height", HORIZ ? ih : size);
+    g.append("line").attr("class","vbandline")
+      .attr("x1", HORIZ ? vpos(b.from) : 0).attr("x2", HORIZ ? vpos(b.from) : iw)
+      .attr("y1", HORIZ ? 0 : vpos(b.from)).attr("y2", HORIZ ? ih : vpos(b.from));
+    if (b.label) g.append("text").attr("class","vbandlabel")
+      .attr("x", HORIZ ? vpos(b.from) + 5 : 6)
+      .attr("y", HORIZ ? 11 : vpos(b.from) - 6).text(b.label);
+  });
+
+  /* ---------- forecast boundary (time-series columns) ---------- */
+  if (CONFIG.forecastFrom != null && !HORIZ){
+    const key = String(CONFIG.forecastFrom);
+    if (cat.domain().includes(key)){
+      const bx = cat(key) - cat.step() * cat.paddingInner() / 2;
+      if (CONFIG.forecastShade)
+        g.append("rect").attr("class","fcband").attr("x", bx).attr("y", 0)
+          .attr("width", Math.max(0, iw - bx)).attr("height", ih);
+      /* the boundary line runs up into its own strip, so line and label read
+         as one mark without the label ever crossing a bar */
+      g.append("line").attr("class","fcline")
+        .attr("x1",bx).attr("x2",bx).attr("y1",-fcH + 2).attr("y2",ih);
+      svg.append("text").attr("class","fclabel")
+        .attr("x", M.left + bx + 5).attr("y", titleH + legendH + 12)
+        .text("Forecast →");
+    } else {
+      console.warn(`forecastFrom ${key} is not one of the categories.`);
+    }
+  }
+
+  /* ---------- gridlines, perpendicular to the value axis ---------- */
+  /* Tick count follows the room available, not a fixed 6. On a narrow bar
+     chart the country names take most of the width and six value ticks ran
+     into one another — "100" touching "200" touching "300" at 360px. */
+  const axisLen = HORIZ ? iw : ih;
+  const tickRoom = HORIZ ? Math.max(60, widestVal + 26) : 40;
+  const nTicks = Math.max(3, Math.min(PCT ? 5 : 6, Math.floor(axisLen / tickRoom)));
+  const ticks = v.ticks(nTicks);
+  g.append("g").attr("class","grid").selectAll("line").data(ticks).join("line")
+    .attr("x1", d => HORIZ ? vpos(d) : 0).attr("x2", d => HORIZ ? vpos(d) : iw)
+    .attr("y1", d => HORIZ ? 0 : vpos(d)).attr("y2", d => HORIZ ? ih : vpos(d));
+
+  /* ---------- axes ---------- */
+  const catAxisG = g.append("g").attr("class","axis");
+  if (HORIZ){
+    catAxisG.call(d3.axisLeft(cat).tickSize(0).tickPadding(8));
+    catAxisG.selectAll("text").text(d => ellipsis(d, catFont, Math.max(28, M.left - 12)))
+      .append("title").text(d => d);
+    g.append("g").attr("class","axis").attr("transform",`translate(0,${ih})`)
+      .call(d3.axisBottom(v).ticks(nTicks).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+  } else {
+    /* Numeric categories thin out; text categories wrap onto up to catLines
+       horizontal lines. Nothing tilts — an angled label costs width as well as
+       height and reads slower than two short stacked lines. */
+    const every = Math.max(1, Math.ceil((cat.domain().length * 44) / iw));
+    const keep  = M._numeric ? cat.domain().filter((_,i) => i % every === 0) : cat.domain();
+    const ax = catAxisG.attr("transform",`translate(0,${ih})`)
+      .call(d3.axisBottom(cat).tickValues(keep).tickSize(0).tickPadding(7));
+    if (!M._numeric){
+      ax.selectAll("text").each(function(d){
+        const t = d3.select(this);
+        /* budget is the band itself — a floor wider than the band is how
+           "Nigeria" ended up overlapping "Democratic…" at 360px */
+        const lines = wrapLabel(d, cat.bandwidth() - 2, catFont, catLines);
+        t.text(null);
+        lines.forEach((ln, i) =>
+          t.append("tspan").attr("x", 0).attr("dy", i ? `${CAT_LH}px` : null).text(ln));
+        t.append("title").text(d);
+      });
+    }
+    g.append("g").attr("class","axis")
+      .call(d3.axisLeft(v).ticks(nTicks).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+  }
+
+  /* ---------- bars ---------- */
+  const dim = CONFIG.highlight && CONFIG.highlight.length;
+  const barThick = MODE === "grouped" ? sub.bandwidth() : cat.bandwidth();
+
+  g.append("g").selectAll("rect").data(SEGS).join("rect")
+    .attr("class", d => "bar" + (dim && !CONFIG.highlight.includes(String(d.r.cat)) ? " dim" : ""))
+    .attr("fill", d => (dim && CONFIG.highlight.includes(String(d.r.cat)) && SERIES.length === 1)
+                        ? RAMP[1] : d.s.color)
+    .attr(HORIZ ? "y" : "x", d => cat(String(d.r.cat)) + (MODE === "grouped" ? sub(d.s.name) : 0))
+    .attr(HORIZ ? "height" : "width", barThick)
+    .attr(HORIZ ? "x" : "y", d => HORIZ ? vpos(d.lo) : vpos(d.hi))
+    .attr(HORIZ ? "width" : "height", d => Math.max(0, Math.abs(vpos(d.hi) - vpos(d.lo))));
+
+  /* zero line, only when the data crosses it */
+  if (VDOM[0] < 0)
+    g.append("line").attr("class","zeroline")
+      .attr("x1", HORIZ ? vpos(0) : 0).attr("x2", HORIZ ? vpos(0) : iw)
+      .attr("y1", HORIZ ? 0 : vpos(0)).attr("y2", HORIZ ? ih : vpos(0));
+
+  /* ---------- reference lines ---------- */
+  (CONFIG.refLines || []).forEach(r => {
+    g.append("line").attr("class","refline")
+      .attr("x1", HORIZ ? vpos(r.value) : 0).attr("x2", HORIZ ? vpos(r.value) : iw)
+      .attr("y1", HORIZ ? 0 : vpos(r.value)).attr("y2", HORIZ ? ih : vpos(r.value));
+    if (r.label) g.append("text").attr("class","reflabel")
+      .attr("x", HORIZ ? vpos(r.value) + 5 : iw)
+      .attr("y", HORIZ ? 11 : vpos(r.value) - 6)
+      .attr("text-anchor", HORIZ ? "start" : "end").text(r.label);
+  });
+
+  /* ---------- labels inside the stack segments ----------
+     The one label position a stacked bar actually needs: the segment values
+     are otherwise only reachable through the tooltip or the table. Each label
+     is fit-tested against its own segment in both directions and simply not
+     drawn where it does not fit, so a thin segment stays clean rather than
+     spilling across its neighbours. Ink or white is chosen per segment from
+     the fill's luminance, which is also what keeps slot 6 amber readable. */
+  if (STACKED && CONFIG.segmentLabels){
+    const segFont = `500 11.5px ${bodyFont}`;
+    const asShare = CONFIG.segmentLabelFormat === "share"
+      || (CONFIG.segmentLabelFormat == null && PCT);
+    const shareFmt = f(`.${CONFIG.shareDecimals ?? 0}f`);
+
+    const placed = SEGS.map(d => {
+      const lbl = asShare
+        ? (d.r.total ? shareFmt(d.v / d.r.total * 100) + "%" : null)
+        : fmt(d.v);
+      if (!lbl) return null;
+      const a = vpos(d.lo), b = vpos(d.hi);
+      const along = Math.abs(b - a);          // segment length, on the value axis
+      const across = cat.bandwidth();         // bar thickness
+      const w = textW(lbl, segFont);
+      const fits = HORIZ ? (along >= w + 10 && across >= 15)
+                         : (along >= 16 && across >= w + 8);
+      if (!fits) return null;
+      return {d, lbl, mid: (a + b) / 2, cpos: cat(String(d.r.cat)) + across / 2};
+    }).filter(Boolean);
+
+    g.append("g").selectAll("text").data(placed).join("text")
+      .attr("class","seglabel")
+      .attr("fill", p => readableOn(p.d.s.color))
+      .attr("x", p => HORIZ ? p.mid : p.cpos)
+      .attr("y", p => HORIZ ? p.cpos : p.mid)
+      .attr("dy", "0.34em").attr("text-anchor", "middle")
+      .text(p => p.lbl);
+  } else if (CONFIG.segmentLabels && !STACKED) {
+    console.warn('segmentLabels applies to stacked charts; in single and grouped modes use valueLabels, which labels the bar end.');
+  }
+
+  /* ---------- value labels ---------- */
+  const wantLabels = CONFIG.valueLabels === true
+    || (CONFIG.valueLabels === "auto" && (MODE === "single" || STACKED));
+  if (wantLabels){
+    if (STACKED && CONFIG.stackTotals && !PCT){
+      /* Net-sum at the end of the stack — house pattern for stacked columns.
+         On a column chart the totals sit side by side, so a 16-year series at
+         phone width had them running into each other; drop them all rather
+         than print an unreadable row. On bars they stack vertically and only
+         need the row to be tall enough for a line of type. */
+      const totalsFit = HORIZ
+        ? cat.bandwidth() >= 13
+        : cat.bandwidth() >= Math.max(...ROWS.map(r => textW(fmt(r.total), labelFont))) + 6;
+      g.append("g").selectAll("text").data(totalsFit ? ROWS : []).join("text")
+        .attr("class","totlabel")
+        .attr("x", d => HORIZ ? vpos(d.total) + 6 : cat(String(d.cat)) + cat.bandwidth()/2)
+        .attr("y", d => HORIZ ? cat(String(d.cat)) + cat.bandwidth()/2 : vpos(d.total) - 6)
+        .attr("dy", HORIZ ? "0.32em" : null)
+        .attr("text-anchor", HORIZ ? "start" : "middle")
+        .text(d => fmt(d.total));
+    } else if (!STACKED){
+      /* One label per bar; it flips inside when it would fall off the plot.
+         Same fit rule as the stack totals: sixteen columns at phone width give
+         each bar about 14px, and a three-digit label needs twenty, so the row
+         is dropped rather than printed on top of itself. */
+      const slot = MODE === "grouped" ? sub.bandwidth() : cat.bandwidth();
+      const widestBarLabel = Math.max(0, ...SEGS.map(d => textW(fmt(d.v), labelFont)));
+      const barLabelsFit = HORIZ ? slot >= 13 : slot >= widestBarLabel + 4;
+      g.append("g").selectAll("text").data(barLabelsFit ? SEGS : []).join("text")
+        .each(function(d){
+          const end = vpos(d.disp >= 0 ? d.hi : d.lo);
+          const lbl = fmt(d.v);
+          const lw  = textW(lbl, labelFont);
+          const outside = HORIZ ? (end + 6 + lw <= iw) : (end - 6 - 12 >= 0);
+          const el = d3.select(this).attr("class", "vlabel" + (outside ? "" : " inside"));
+          if (!outside) el.attr("fill", readableOn(d.s.color));
+          if (HORIZ){
+            el.attr("x", outside ? end + 6 : end - 6)
+              .attr("y", cat(String(d.r.cat)) + (MODE==="grouped" ? sub(d.s.name) + sub.bandwidth()/2 : cat.bandwidth()/2))
+              .attr("dy","0.32em").attr("text-anchor", outside ? "start" : "end");
+          } else {
+            el.attr("x", cat(String(d.r.cat)) + (MODE==="grouped" ? sub(d.s.name) + sub.bandwidth()/2 : cat.bandwidth()/2))
+              .attr("y", outside ? end - 6 : end + 14).attr("text-anchor","middle");
+          }
+          el.text(lbl);
+        });
+    }
+  }
+
+  /* ---------- overlaid line on a second axis (columns only) ---------- */
+  if (ovlActive){
+    const ov = DATA.values[OVL.series];
+    const pts = ROWS.map(r => ({r, val: ov[r.i]})).filter(p => p.val != null);
+    const y2 = d3.scaleLinear()
+      .domain(d3.extent(pts, p => p.val)).nice(4)
+      .range([ih, 0]);
+    const cx = r => cat(String(r.cat)) + cat.bandwidth()/2;
+    const colour = RAMP[SERIES.length % RAMP.length];
+    g.append("g").attr("class","axis").attr("transform",`translate(${iw},0)`)
+      .call(d3.axisRight(y2).ticks(4).tickFormat(fmtOvl).tickSize(0).tickPadding(8));
+    /* its title is drawn in the title row at the top of the SVG, right-aligned */
+    g.append("path").attr("class","overlay").attr("stroke", colour)
+      .attr("d", d3.line().x(p => cx(p.r)).y(p => y2(p.val))(pts));
+    g.append("g").selectAll("circle").data(pts).join("circle")
+      .attr("class","overlaydot").attr("r",3).attr("fill", colour)
+      .attr("cx", p => cx(p.r)).attr("cy", p => y2(p.val));
+  }
+
+  /* ---------- hover: one target per category band ---------- */
+  const hoverG = g.append("g");
+  const band = hoverG.append("rect").attr("class","hoverband").style("display","none");
+  hoverG.selectAll("rect.hit").data(ROWS).join("rect")
+    .attr("class","hit").attr("fill","none").style("pointer-events","all")
+    .attr(HORIZ ? "y" : "x", d => cat(String(d.cat)) - cat.step()*cat.paddingInner()/2)
+    .attr(HORIZ ? "height" : "width", cat.step())
+    .attr(HORIZ ? "x" : "y", 0)
+    .attr(HORIZ ? "width" : "height", depthLen)
+    .on("mousemove touchmove", function(ev, d){
+      band.style("display", null)
+        .attr(HORIZ ? "y" : "x", cat(String(d.cat)) - cat.step()*cat.paddingInner()/2)
+        .attr(HORIZ ? "height" : "width", cat.step())
+        .attr(HORIZ ? "x" : "y", 0)
+        .attr(HORIZ ? "width" : "height", depthLen);
+      const rows = SERIES.map((s,si) => ({s, v: d.vals[si]}))
+        .filter(r => r.v != null)
+        .map(r => `<tr><td><span class="sw" style="background:${r.s.color}"></span>${r.s.name}</td>
+                       <td class="v">${fmt(r.v)}${PCT && d.total ? ` · ${d3.format(".1f")(r.v/d.total*100)}%` : ""}</td></tr>`)
+        .join("");
+      const totRow = SERIES.length > 1
+        ? `<tr class="tot"><td>Total</td><td class="v">${fmt(d.total)}</td></tr>` : "";
+      const ovlRow = ovlActive && DATA.values[OVL.series][d.i] != null
+        ? `<tr class="tot"><td>${OVL.series}</td><td class="v">${fmtOvl(DATA.values[OVL.series][d.i])}</td></tr>` : "";
+      const fc = (CONFIG.forecastFrom != null && Number(d.cat) >= Number(CONFIG.forecastFrom)) ? " · forecast" : "";
+      tip.attr("hidden", null).html(`<h4>${d.cat}${fc}</h4><table>${rows}${totRow}${ovlRow}</table>`);
+      const [mx, my] = d3.pointer(ev, svg.node());
+      const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+      tip.style("left", Math.min(W - tw - 4, Math.max(4, mx + 16)) + "px")
+         .style("top",  Math.min(H - th - 4, Math.max(4, my - th/2)) + "px");
+    })
+    .on("mouseleave touchend", () => { band.style("display","none"); tip.attr("hidden",""); });
+
+  render._H = H;
+  reportHeight();
+}
+
+/* ---- table view: the accessibility relief channel, and the honest fallback ---- */
+function buildTable(){
+  prepare();
+  const cols = SERIES.map(s => s.name).concat(ovlActive ? [OVL.series] : []);
+  const head = `<tr><th>Category</th>${cols.map(c=>`<th>${c}</th>`).join("")}` +
+               (SERIES.length > 1 ? "<th>Total</th>" : "") + "</tr>";
+  const body = ROWS.map(r =>
+    `<tr><td>${r.cat}</td>` +
+    SERIES.map((s,si) => `<td>${fmt(r.vals[si])}</td>`).join("") +
+    (ovlActive ? `<td>${fmtOvl(DATA.values[OVL.series][r.i])}</td>` : "") +
+    (SERIES.length > 1 ? `<td>${fmt(r.total)}</td>` : "") + "</tr>"
+  ).join("");
+  document.getElementById("tableview").innerHTML =
+    `<table><caption class="sr-only">${CONFIG.title}</caption><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place rather than stacking below it. Inside a
+   fixed-height iframe there is no room to grow, so a stacked table is simply
+   clipped — swapping keeps everything visible at one iframe height. */
+btn.addEventListener("click", () => {
+  const showTable = tv.hasAttribute("hidden");
+  /* Height-neutral swap: the table takes exactly the plot's box, whether the
+     rows overflow it (scroll) or fall short of it (whitespace). A table that
+     is shorter than the chart would otherwise shrink the whole figure, and
+     the iframe is a fixed box — the gap shows up as a hole in the article. */
+  const boxH = (render._H || CONFIG.height) + "px";
+  tv.style.maxHeight = boxH;
+  tv.style.height    = boxH;
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
+  reportHeight();
+});
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x.
+
+   The chart is not rasterised via an SVG data URL, because an SVG
+   loaded that way renders in an isolated context with no access to
+   the page's webfonts, so every label would silently fall back to a
+   system face. Redrawing through the Canvas 2D API uses the fonts
+   already loaded here, so the PNG matches what is on screen.
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const op = parseFloat(cs.opacity);
+  if (!isNaN(op) && op < 1) ctx.globalAlpha *= op;
+
+  /* translate then rotate, in the order SVG applies them */
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) {
+    const mt = /translate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?/.exec(tf);
+    if (mt) ctx.translate(+mt[1], +(mt[2] || 0));
+    const mr = /rotate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+)[\s,]+([-\d.]+))?\s*\)/.exec(tf);
+    if (mr) {
+      const a = +mr[1] * Math.PI / 180;
+      if (mr[2] != null) { ctx.translate(+mr[2], +mr[3]); ctx.rotate(a); ctx.translate(-mr[2], -mr[3]); }
+      else ctx.rotate(a);
+    }
+  }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.stroke(path);
+        ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    const dxAttr = el.getAttribute("dx");
+    const dx = dxAttr ? (/em$/.test(dxAttr) ? parseFloat(dxAttr) * fs : parseFloat(dxAttr)) : 0;
+    /* Wrapped category labels are tspans, each carrying its own dy. Drawing
+       el.textContent would run every line together on one baseline. */
+    const spans = el.querySelectorAll(":scope > tspan");
+    if (spans.length){
+      let ty = num("y") + dy;
+      spans.forEach(ts => {
+        const tdy = ts.getAttribute("dy");
+        if (tdy) ty += /em$/.test(tdy) ? parseFloat(tdy) * fs : parseFloat(tdy);
+        const tx = ts.getAttribute("x") != null ? parseFloat(ts.getAttribute("x")) : num("x");
+        ctx.fillText(ts.textContent, tx + dx, ty);
+      });
+    } else {
+      /* a <title> child is a tooltip, not drawn text */
+      ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
+                   num("x") + dx, num("y") + dy);
+    }
+    ctx.textAlign = "left";
+  }
+
+  for (const child of el.children){
+    const t = (child.tagName||"").toLowerCase();
+    if (t !== "title" && t !== "tspan") paintSvgNode(ctx, child);   /* both handled above */
+  }
+  ctx.restore();
+}
+
+async function exportPNG(){
+  /* the table view hides the chart — switch back before drawing */
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const CW = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleEl.textContent, CW);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(CW, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, CW);
+
+  const titleH = tLines.length * tLh, subH = sLines.length * sLh, srcH = rLines.length * rLh;
+  const totalH = PAD + titleH + 5 + subH + 14 + SH + 14 + srcH + PAD;
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(CW * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, CW, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(CW, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (CONFIG.title || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+
+document.getElementById("download").addEventListener("click", () => { exportPNG(); });
+
+/* ---- tell the parent page how tall we are (works if the CMS ever adds a resizer) ---- */
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+buildTable();
+render();
+/* Re-render on width change only. Observing .wrap and re-rendering on any
+   size change would loop, because render() sets the svg height, which
+   resizes .wrap, which fires the observer again. */
+let lastW = W;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w && w !== lastW) { lastW = w; render(); }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>

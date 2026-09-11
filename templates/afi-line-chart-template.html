@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* ============================================================
+   AFI chart — line chart template
+   Design tokens are the agreed AFI system. Do not hand-edit
+   colours here; change them in one place and rebuild.
+   ============================================================ */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:balance}
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.endlabel{font-size:12.5px; font-weight:500}
+.endlabel.ref{font-weight:400; fill:var(--label)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+/* horizontal band marking a threshold region on the y-axis */
+.yband{fill:var(--panel)}
+.ybandline{stroke:var(--grid); stroke-width:1; stroke-dasharray:4 3}
+.ybandlabel{font-size:11px; fill:var(--muted)}
+.ybandtick{font-size:12px; fill:var(--muted); text-anchor:end}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.hoverline{stroke:var(--label); stroke-width:1; stroke-dasharray:3 3}
+.hoverdot{stroke:var(--surface); stroke-width:2}
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* max-height set from CONFIG.height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   ============================================================ */
+const CONFIG = {
+  title:    "Demographic dividend by African Union region, 1960–2100",
+  subtitle: "Working-age population relative to children and the elderly. A value of 2.0 means two working-age people for every dependant. Values from 2023 are forecasts.",
+  source:   "International Futures version 8.71, Base scenario",
+  sourceUrl:"https://korbel.du.edu/pardee/",
+  yTitle:   "Working-age people per dependant",
+  forecastFrom: 2023,          // first forecast year; null to disable entirely
+  forecastShade: false,        // false = dotted boundary line only, no shading
+  xPad:     2,                 // years of breathing room left of the first data point
+  yMin:     0.9,               // explicit y floor; null to fit the data
+  yMax:     2.3,               // explicit y ceiling; null to fit the data
+  /* Shaded threshold regions on the y-axis. `to: null` runs to the top.
+     The boundary value is labelled on the axis in the muted grey. */
+  yBands: [{ from: 1.7, to: null, label: "Window of opportunity" }],
+  decimals: 2,
+  /* Series dropped from the chart and the table entirely. */
+  excludeSeries: ["Sub-Saharan Africa"],
+  /* Which series are context rather than subject. Aggregates are drawn as
+     grey dashed reference lines so they never compete with the regions. */
+  referenceSeries: ["Africa"],
+  height:   440,               // plot height in px (excludes title/source)
+};
+
+const DATA = /*__DATA__*/;
+
+/* ============================================================
+   AFI design system — shared by every chart type.
+   ============================================================ */
+const RAMP = ["#172859","#e67500","#004ea2","#389d63","#892e88","#e79f2b","#9e234f","#5791cd"];
+const INK="#172859", LABEL="#58585a", MUTED="#7d8899", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff";
+const REF_DASH = [[6,4],[2,3],[8,3,2,3]];   // dash patterns for reference series, in order
+
+/* ---- drop excluded series before anything else reads DATA, so the chart,
+       the legend and the table all agree ---- */
+if (CONFIG.excludeSeries && CONFIG.excludeSeries.length) {
+  DATA.series = DATA.series.filter(s => !CONFIG.excludeSeries.includes(s.name));
+}
+
+/* ---- assign roles: subject series take ramp colours, references take grey ---- */
+const isRef = n => CONFIG.referenceSeries.includes(n);
+const subjects = DATA.series.filter(s => !isRef(s.name));
+const refs     = DATA.series.filter(s =>  isRef(s.name));
+
+if (subjects.length > RAMP.length) {
+  console.warn(`${subjects.length} subject series exceeds the ${RAMP.length}-slot ramp — fold the tail into "Other" or facet.`);
+}
+const SERIES = [
+  ...subjects.map((s,i) => ({...s, color: RAMP[i], dash:null,          width:2,   role:"subject"})),
+  ...refs.map(    (s,i) => ({...s, color: LABEL,   dash:REF_DASH[i%3], width:1.75, role:"reference"})),
+];
+
+/* ---- state ---- */
+const years = DATA.years;
+const fmt = d3.format(`.${CONFIG.decimals}f`);
+let W = 0;
+
+/* ---- scaffolding ---- */
+document.getElementById("title").textContent = CONFIG.title;
+document.getElementById("subtitle").textContent = CONFIG.subtitle;
+document.getElementById("source").innerHTML =
+  "Source: " + (CONFIG.sourceUrl
+    ? `<a href="${CONFIG.sourceUrl}" target="_blank" rel="noopener">${CONFIG.source}</a>`
+    : CONFIG.source);
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+
+function render(){
+  const node = document.querySelector(".afi");
+  W = node.clientWidth || 780;
+  const narrow = W < 560;
+  /* right margin holds the end labels; on narrow screens they are dropped
+     and a legend takes over below the plot, so the plot reclaims that width
+     but must give back the vertical space the legend needs. */
+  /* The right margin has to fit the widest end label, so measure the labels
+     rather than reserving a fixed guess — a name plus its value can easily
+     exceed 118px, and the overflow is silently clipped at the SVG edge. */
+  const probe = render._probe || (render._probe = document.createElement("canvas").getContext("2d"));
+  probe.font = `500 12.5px ${getComputedStyle(document.body).fontFamily}`;
+  const widestLabel = Math.max(...SERIES.map(s => {
+    const v = DATA.values[s.name];
+    let last = null;
+    for (let i = v.length - 1; i >= 0; i--) if (v[i] != null) { last = v[i]; break; }
+    return probe.measureText(`${s.name} ${fmt(last)}`).width;
+  }));
+  const M = {
+    top: 14,
+    right: narrow ? 14 : Math.min(Math.ceil(widestLabel) + 22, Math.round(W * 0.4)),
+    bottom: 30, left: 44
+  };
+  const legendH = narrow ? 52 : 0;
+  /* The SVG keeps a constant height at every width: on narrow screens the
+     legend takes its space from the plot rather than adding to the page, so
+     a single fixed iframe height works on desktop and mobile alike. */
+  const H = CONFIG.height;
+  const iw = Math.max(120, W - M.left - M.right);
+  const ih = H - M.top - M.bottom - legendH;
+
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const x = d3.scaleLinear()
+      .domain([years[0] - CONFIG.xPad, years[years.length-1]])
+      .range([0, iw]);
+  const allVals = SERIES.flatMap(s => DATA.values[s.name]).filter(v => v != null);
+  const [dLo, dHi] = d3.extent(allVals);
+  const y = d3.scaleLinear()
+      .domain([CONFIG.yMin ?? dLo, CONFIG.yMax ?? dHi])
+      .range([ih, 0]);
+  /* Only round the domain when both ends are automatic — nice() on a hand-set
+     floor would silently move it away from the value that was asked for. */
+  if (CONFIG.yMin == null && CONFIG.yMax == null) y.nice();
+
+  /* y-axis threshold bands — drawn first, so everything sits on top */
+  (CONFIG.yBands || []).forEach(b => {
+    const top    = y(b.to   ?? y.domain()[1]);
+    const bottom = y(b.from ?? y.domain()[0]);
+    g.append("rect").attr("class","yband")
+      .attr("x", 0).attr("y", Math.min(top, bottom))
+      .attr("width", iw).attr("height", Math.abs(bottom - top));
+    g.append("line").attr("class","ybandline")
+      .attr("x1", 0).attr("x2", iw).attr("y1", bottom).attr("y2", bottom);
+    /* label sits just inside the band, on its boundary line */
+    if (b.label) {
+      g.append("text").attr("class","ybandlabel")
+        .attr("x", 6).attr("y", bottom - 6).text(b.label);
+    }
+    /* and the boundary value is called out on the axis itself */
+    if (b.from != null) {
+      g.append("text").attr("class","ybandtick")
+        .attr("x", -8).attr("y", bottom).attr("dy","0.32em")
+        .text(String(b.from));   // matches the axis ticks, not the value format
+    }
+  });
+
+  /* forecast: shading is optional, the boundary line is not */
+  if (CONFIG.forecastFrom) {
+    if (CONFIG.forecastShade) {
+      g.append("rect").attr("class","fcband")
+        .attr("x", x(CONFIG.forecastFrom)).attr("y", 0)
+        .attr("width", Math.max(0, iw - x(CONFIG.forecastFrom))).attr("height", ih);
+    }
+    g.append("line").attr("class","fcline")
+      .attr("x1", x(CONFIG.forecastFrom)).attr("x2", x(CONFIG.forecastFrom))
+      .attr("y1", 0).attr("y2", ih);
+    g.append("text").attr("class","fclabel")
+      .attr("x", x(CONFIG.forecastFrom) + 5).attr("y", ih - 6)
+      .text("Forecast →");
+  }
+
+  /* gridlines only — no axis domain lines */
+  g.append("g").attr("class","grid")
+    .selectAll("line").data(y.ticks(6)).join("line")
+      .attr("x1",0).attr("x2",iw).attr("y1",y).attr("y2",y);
+
+  g.append("g").attr("class","axis")
+    .attr("transform",`translate(0,${ih})`)
+    .call(d3.axisBottom(x).ticks(narrow ? 4 : 8).tickFormat(d3.format("d")).tickSize(0).tickPadding(9));
+  g.append("g").attr("class","axis")
+    .call(d3.axisLeft(y).ticks(6).tickSize(0).tickPadding(8));
+  g.append("text").attr("class","ytitle")
+    .attr("x", -M.left + 2).attr("y", -2).text(CONFIG.yTitle);
+
+  /* lines */
+  const line = d3.line()
+    .defined(d => d.v != null)
+    .x(d => x(d.year)).y(d => y(d.v));
+  const pts = s => years.map((year,i) => ({year, v: DATA.values[s.name][i]}));
+
+  SERIES.forEach(s => {
+    g.append("path")
+      .datum(pts(s))
+      .attr("fill","none")
+      .attr("stroke", s.color)
+      .attr("stroke-width", s.width)
+      .attr("stroke-linejoin","round").attr("stroke-linecap","round")
+      .attr("stroke-dasharray", s.dash ? s.dash.join(" ") : null)
+      .attr("d", line);
+  });
+
+  /* ---- end labels, de-collided ---- */
+  if (!narrow) {
+    const last = s => { const v = DATA.values[s.name];
+      for (let i=v.length-1;i>=0;i--) if (v[i]!=null) return {v:v[i], year:years[i]}; };
+    const items = SERIES.map(s => { const l = last(s);
+      return {s, y0: y(l.v), y1: y(l.v), text: s.name, val: l.v}; })
+      .sort((a,b) => a.y0 - b.y0);
+    /* iterative push: nothing closer than 14px, nothing outside the plot */
+    const MIN = 14;
+    for (let pass=0; pass<80; pass++){
+      let moved = false;
+      for (let i=1;i<items.length;i++){
+        const gap = items[i].y1 - items[i-1].y1;
+        if (gap < MIN){ const push=(MIN-gap)/2;
+          items[i-1].y1 -= push; items[i].y1 += push; moved = true; }
+      }
+      items[0].y1 = Math.max(items[0].y1, 6);
+      items[items.length-1].y1 = Math.min(items[items.length-1].y1, ih);
+      if (!moved) break;
+    }
+    items.forEach(it => {
+      /* leader line only when the label had to move off its true position */
+      if (Math.abs(it.y1 - it.y0) > 1.5){
+        g.append("path")
+          .attr("fill","none").attr("stroke", it.s.color).attr("stroke-width",1).attr("opacity",.45)
+          .attr("d", `M${iw},${it.y0} L${iw+7},${it.y0} L${iw+11},${it.y1}`);
+      }
+      g.append("text")
+        .attr("class", "endlabel" + (it.s.role==="reference" ? " ref" : ""))
+        .attr("x", iw + 14).attr("y", it.y1).attr("dy","0.32em")
+        .attr("fill", it.s.color)
+        .text(`${it.text} ${fmt(it.val)}`);
+    });
+  } else {
+    /* narrow: legend under the plot instead of end labels */
+    const lg = svg.append("g").attr("transform", `translate(${M.left},${M.top + ih + M.bottom + 14})`);
+    let cx = 0, cy = 0;
+    SERIES.forEach(s => {
+      const label = s.name;
+      const wpx = label.length * 6.4 + 20;
+      if (cx + wpx > iw){ cx = 0; cy += 17; }
+      const row = lg.append("g").attr("transform",`translate(${cx},${cy})`);
+      if (s.dash) row.append("line").attr("x1",0).attr("x2",12).attr("y1",0).attr("y2",0)
+          .attr("stroke",s.color).attr("stroke-width",2).attr("stroke-dasharray",s.dash.join(" "));
+      else row.append("rect").attr("x",0).attr("y",-4).attr("width",11).attr("height",8)
+          .attr("rx",2).attr("fill",s.color);
+      row.append("text").attr("x",17).attr("dy","0.32em")
+        .attr("font-size",11.5).attr("fill",LABEL).text(label);
+      cx += wpx;
+    });
+  }
+
+  /* ---- hover ---- */
+  const hl = g.append("line").attr("class","hoverline").attr("y1",0).attr("y2",ih).style("display","none");
+  const dots = g.append("g").style("display","none");
+  const dotSel = dots.selectAll("circle").data(SERIES).join("circle")
+      .attr("class","hoverdot").attr("r",4).attr("fill",d=>d.color);
+
+  g.append("rect").attr("width",iw).attr("height",ih).attr("fill","none")
+    .style("pointer-events","all")
+    .on("mousemove touchmove", ev => {
+      const [mx] = d3.pointer(ev);
+      const yr = Math.max(years[0], Math.min(years[years.length-1], Math.round(x.invert(mx))));
+      const i = years.indexOf(yr); if (i < 0) return;
+      hl.style("display",null).attr("x1",x(yr)).attr("x2",x(yr));
+      dots.style("display",null);
+      dotSel.attr("cx", x(yr)).attr("cy", d => y(DATA.values[d.name][i]))
+            .style("display", d => DATA.values[d.name][i]==null ? "none" : null);
+      const rows = SERIES
+        .map(s => ({s, v: DATA.values[s.name][i]}))
+        .filter(r => r.v != null)
+        .sort((a,b) => b.v - a.v)
+        .map(r => `<tr><td><span class="sw" style="background:${r.s.color}"></span>${r.s.name}</td>
+                       <td class="v">${fmt(r.v)}</td></tr>`).join("");
+      tip.attr("hidden", null)
+         .html(`<h4>${yr}${CONFIG.forecastFrom && yr>=CONFIG.forecastFrom ? " · forecast" : ""}</h4><table>${rows}</table>`);
+      const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+      const px = M.left + x(yr);
+      tip.style("left", Math.min(W - tw - 4, Math.max(4, px + 16)) + "px")
+         .style("top",  Math.max(4, M.top + ih/2 - th/2) + "px");
+    })
+    .on("mouseleave touchend", () => {
+      hl.style("display","none"); dots.style("display","none"); tip.attr("hidden","");
+    });
+
+  reportHeight();
+}
+
+/* ---- table view: the accessibility relief channel, and the honest fallback ---- */
+function buildTable(){
+  const head = `<tr><th>Year</th>${SERIES.map(s=>`<th>${s.name}</th>`).join("")}</tr>`;
+  const body = years.map((yr,i) =>
+    `<tr><td>${yr}</td>${SERIES.map(s=>`<td>${DATA.values[s.name][i]==null?"—":fmt(DATA.values[s.name][i])}</td>`).join("")}</tr>`
+  ).join("");
+  document.getElementById("tableview").innerHTML =
+    `<table><caption class="sr-only">${CONFIG.title}</caption><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place rather than stacking below it. Inside a
+   fixed-height iframe there is no room to grow, so a stacked table is simply
+   clipped — swapping keeps everything visible at one iframe height.
+
+   KNOWN BUG, fixed in the bar template and not yet ported here: this only
+   sets a max-height, so a table SHORTER than the chart shrinks the whole
+   figure and leaves a hole in the article. The fix is to set height as well
+   as max-height, so the table takes the plot's exact box. */
+btn.addEventListener("click", () => {
+  const showTable = tv.hasAttribute("hidden");
+  tv.style.maxHeight = CONFIG.height + "px";
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
+  reportHeight();
+});
+
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x.
+
+   The chart is not rasterised via an SVG data URL, because an SVG
+   loaded that way renders in an isolated context with no access to
+   the page's webfonts, so every label would silently fall back to a
+   system face. Redrawing through the Canvas 2D API uses the fonts
+   already loaded here, so the PNG matches what is on screen.
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) { const m = /translate\(\s*([-\d.]+)[\s,]+([-\d.]+)/.exec(tf); if (m) ctx.translate(+m[1], +m[2]); }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.globalAlpha = parseFloat(cs.opacity) || 1;
+        ctx.stroke(path);
+        ctx.globalAlpha = 1; ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    ctx.fillText(el.textContent, num("x"), num("y") + dy);
+    ctx.textAlign = "left";
+  }
+
+  for (const child of el.children) paintSvgNode(ctx, child);
+  ctx.restore();
+}
+
+async function exportPNG(){
+  /* the table view hides the chart — switch back before drawing */
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const W = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleEl.textContent, W);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(W, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, W);
+
+  const titleH = tLines.length * tLh, subH = sLines.length * sLh, srcH = rLines.length * rLh;
+  const totalH = PAD + titleH + 5 + subH + 14 + SH + 14 + srcH + PAD;
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(W * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, W, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(W, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (CONFIG.title || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+
+document.getElementById("download").addEventListener("click", () => { exportPNG(); });
+
+/* ---- tell the parent page how tall we are (works if the CMS ever adds a resizer) ---- */
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+buildTable();
+render();
+/* Re-render on width change only. Observing .wrap and re-rendering on any
+   size change would loop, because render() sets the svg height, which
+   resizes .wrap, which fires the observer again. */
+let lastW = W;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w && w !== lastW) { lastW = w; render(); }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>
