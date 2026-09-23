@@ -11,7 +11,7 @@ furniture — read them from `docs/` and apply them.**
 ## Where things are
 
 ```
-templates/   the two working templates — start from these, never rewrite them
+templates/   the working templates — start from these, never rewrite them
 docs/        the design system, the bar/column decisions, publishing, style guide
 tools/       IFs extract decoder, layout harness, review-page builder
 preview/     the live switchable preview of the bar template
@@ -22,6 +22,13 @@ Read before building: `docs/afi-chart-conventions-from-flourish.md` for the
 system, `docs/afi-bar-and-column-decisions.md` for the bar template's reasoning
 and its CONFIG keys, `docs/publishing-an-afi-chart-github-pages.md` for how a
 chart goes live.
+
+**"At a glance" summary blocks** (the native replacement for the Canva slider
+at the top of a country page) have their own template,
+`templates/afi-at-a-glance-template.html`, and their own decisions doc,
+`docs/afi-at-a-glance-decisions.md`. They are hand-written SVG with the font
+embedded, not D3. Check each one with `tools/verify-glance-fit.py`; it must
+pass at 840 and 880.
 
 ## Non-negotiables
 

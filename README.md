@@ -27,12 +27,16 @@ furniture; read them from `docs/` and apply them.
 | `*.html` (root) | Published charts — the filename is the public URL |
 | `templates/afi-line-chart-template.html` | The line chart template |
 | `templates/afi-bar-chart-template.html` | The bar/column template — 2 orientations × 4 modes |
+| `templates/afi-at-a-glance-template.html` | The "At a glance" summary block for the top of a country page — self-contained, no D3; renders with the Sudan block as its default |
 | `docs/afi-chart-conventions-from-flourish.md` | The design system: ramp, greyscale, typography, sequential ramps, house grammar |
 | `docs/afi-bar-and-column-decisions.md` | Why the bar template is shaped as it is; CONFIG keys; measured heights; verification method |
+| `docs/afi-at-a-glance-decisions.md` | How the summary block fits a fixed iframe, the `fit()` order, design choices, making a new country |
+| `docs/handover-at-a-glance.md` | Handover notes from the Claude app session that built the Sudan block, including problems found on the Sudan page |
 | `docs/publishing-an-afi-chart-github-pages.md` | How a chart goes live and gets embedded |
 | `docs/tableau-iss-today-style-guide.md` | The institutional Tableau guide, transcribed |
 | `tools/ifs-decoder.py` | Decodes a raw International Futures CSV extract |
 | `tools/verify-bar-layout.js` | Layout harness — runs the template's geometry functions against exact d3 scale reimplementations |
+| `tools/verify-glance-fit.py` | Render check for a summary block — every tab at every iframe height and width (needs Playwright) |
 | `tools/build-review-page.py` | Builds the preview page from the bar template, so the two cannot drift |
 | `.claude/skills/afi-chart/SKILL.md` | The afi-chart skill |
 
