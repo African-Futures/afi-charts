@@ -124,7 +124,13 @@ Found while checking the figures, on https://futures.issafrica.org/geographic/co
   - manufacturing "US$439", which is probably US$439 million
   - net crop imports of 12.4% described as "less than" the 7.9% average
 - **GDP difference is slightly off:** the Current Path GDP of US$38.9bn plus the stated US$19bn difference gives US$57.9bn, against the US$58.2bn quoted for Combined. This is only rounding.
-- **Three Current Path values in the block are worked out, not quoted.** The page only gives the gap to the scenario, so they are marked `*`:
+- **Found later, reading the full Combined scenario section (23 Sep):**
+  - GDP per capita is explained: the Current Path section gives Sudan's 2043 value as US$2 384, and US$2 998 is the low-income peer average. The Executive Summary calls US$2 998 Sudan's own figure. The Combined tab uses US$2 384 against US$3 176.
+  - Life expectancy: the Combined section gives 73.1 years on the Current Path and 77.3 in the Combined scenario, but the Executive Summary gives 73.1 as the Combined value. The 2023 comparison with peers is "about 6 years lower" in one place and "about 6 years higher" in the other. Life expectancy was left out of the block.
+  - Average growth to 2043 on the Current Path is 1.2% in the Current Path section and 2.4% in the Combined section.
+  - Current Path poverty in 2043 is 38.8% in most places, but 38.9% in the Combined section.
+  - The GDP difference is US$19.3 billion in the Combined section, which settles the rounding point above.
+- **Three Current Path values in the block are worked out, not quoted.** (Tab 5 has since been replaced, so these are no longer shown.) The page only gives the gap to the scenario, so they are marked `*`:
   - life expectancy 68.9 (73.1 − 4.2)
   - adult education 5.9 years (7.6 − 1.7)
   - carbon emissions 8.6 Mt (11.4 ÷ 1.326)

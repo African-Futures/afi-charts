@@ -40,7 +40,8 @@ does not fit is clipped silently.
 
 - **840 px** is the tested height, for iframe widths from 320 px (a 360 px phone
   less the page's 20 px margins) to 810 px (the article column).
-- 800 works for the Sudan block only when the iframe is 360 px or wider.
+- The Sudan block also passes at 800 at every width, but 840 leaves a margin
+  for longer wording in other countries.
 - No `loading="lazy"`: the block sits at the top of the page. Chart iframes
   further down should have it.
 
@@ -96,7 +97,12 @@ listens yet; it only matters if the web team ever adds a resize listener.
     value a year, Current Path (dashed navy) against the scenario (orange),
     with the 1.7 threshold as a dashed green rule
   - `levers()` — the ranking chart
-  - `dumbbell()` — the "what changes by 2043" rows
+  - `combined()` — the Combined scenario cards: for each of four metrics, a
+    Current Path bar and a scenario bar on one scale, both values printed. In
+    the fixed box the cards stay two to a row at every width, because four
+    stacked cards don't fit a phone. Its legend is marked `.keep`
+  - `dumbbell()` — scenario-against-Current-Path rows. No longer used by Sudan,
+    whose tab 5 became the Combined scenario cards, but kept for other countries
 - **Tabs** are full ARIA tabs that work with the arrow keys, Home and End.
   Without JavaScript every panel shows, one after another.
 - **Font**: Open Sans, the Latin variable font from Google Fonts (the same file

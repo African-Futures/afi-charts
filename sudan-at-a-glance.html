@@ -146,6 +146,23 @@
   .afi-g-db .val{grid-area:val}
 }
 
+/* combined-scenario cards: a Current Path bar and a scenario bar per metric, on one scale */
+.afi-g-key .sq::before{width:10px; height:10px; border:0; background:var(--c); vertical-align:-1px}
+.afi-g-cmp{display:grid; grid-template-columns:1fr 1fr; gap:0 28px}
+.afi-g-cmp .c{min-width:0; border-top:1px solid var(--grid); padding:10px 0 12px; display:flex; flex-direction:column; justify-content:center; gap:6px}
+.afi-g-cmp .lab{line-height:1.3}
+.afi-g-cmp .lab b{font-size:14px; font-weight:600; color:var(--ink)}
+.afi-g-cmp .lab span{font-size:11.5px; color:var(--muted); white-space:nowrap}
+.afi-g-cmp .bars{display:grid; grid-template-columns:1fr auto; gap:5px 10px; align-items:center}
+.afi-g-cmp .trk{height:10px}
+.afi-g-cmp .trk i{display:block; height:100%; background:var(--cp); border-radius:0 2px 2px 0}
+.afi-g-cmp .trk.sc{height:14px}
+.afi-g-cmp .trk.sc i{background:var(--sc)}
+.afi-g-cmp .v{text-align:right; white-space:nowrap; font-size:13px; line-height:1.25; color:var(--text)}
+.afi-g-cmp .v.sc{font-size:16px; font-weight:600; color:var(--ink)}
+.afi-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+@container (max-width:480px){ .afi-g-cmp{grid-template-columns:1fr} .afi-g-cmp .c{padding:7px 0 8px; gap:4px} }
+
 .afi-g-foot{margin-top:16px!important; padding-top:10px; border-top:1px solid var(--grid); font-size:12px; color:var(--muted)}
 .afi-g-foot a{color:inherit}
 @media (prefers-reduced-motion:reduce){ .afi-g *{transition:none!important} }
@@ -171,6 +188,9 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
 .afi-framed .afi-g-db .r > div{padding:4px 0}
 .afi-framed .afi-g-db .lab b{display:inline; margin-right:6px}
 .afi-framed .afi-g-db .trk{height:16px}
+.afi-framed .afi-g-cmp{flex:1 1 0; min-height:0; grid-auto-rows:1fr}
+/* in the fixed box the cards stay two to a row at every width: four stacked cards don't fit a phone */
+@container (max-width:480px){ .afi-framed .afi-g-cmp{grid-template-columns:1fr 1fr} }
 /* optional text dropped only when the box is too short for it (see fit()) */
 .afi-framed .afi-fit-hide{display:none!important}
 .afi-framed .afi-g-link{margin-top:6px}
@@ -192,6 +212,15 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
   .afi-framed .afi-g-db .val{font-size:12px}
   .afi-framed .afi-g-db .lab b{display:inline; margin-right:6px}
   .afi-framed .afi-g-db .lab span{font-size:11px}
+  .afi-framed .afi-g-cmp{gap:0 14px}
+  .afi-framed .afi-g-cmp .c{padding:6px 0 7px; gap:4px; justify-content:flex-end}   /* bars line up across a row when a label wraps */
+  .afi-framed .afi-g-cmp .lab b{display:block; font-size:13px}
+  .afi-framed .afi-g-cmp .lab span{font-size:11px; white-space:normal}
+  .afi-framed .afi-g-cmp .bars{gap:3px 6px}
+  .afi-framed .afi-g-cmp .trk{height:8px}
+  .afi-framed .afi-g-cmp .trk.sc{height:11px}
+  .afi-framed .afi-g-cmp .v{font-size:12px}
+  .afi-framed .afi-g-cmp .v.sc{font-size:14px}
 }
 </style>
 </head>
@@ -216,7 +245,7 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
     <button class="afi-g-tab" role="tab" id="afi-t2" aria-controls="afi-p2" aria-selected="false" tabindex="-1"><i>2</i>Poverty</button>
     <button class="afi-g-tab" role="tab" id="afi-t3" aria-controls="afi-p3" aria-selected="false" tabindex="-1"><i>3</i>Population</button>
     <button class="afi-g-tab" role="tab" id="afi-t4" aria-controls="afi-p4" aria-selected="false" tabindex="-1"><i>4</i>Strongest levers</button>
-    <button class="afi-g-tab" role="tab" id="afi-t5" aria-controls="afi-p5" aria-selected="false" tabindex="-1"><i>5</i>What changes by 2043</button>
+    <button class="afi-g-tab" role="tab" id="afi-t5" aria-controls="afi-p5" aria-selected="false" tabindex="-1"><i>5</i>Combined scenario</button>
   </div>
 
   <!-- ── 1 Economy ───────────────────────────────────────── -->
@@ -272,16 +301,16 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
     <a class="afi-g-link" href="https://futures.issafrica.org/geographic/countries/sudan/#04-comparisons" target="_top">Scenario comparisons →</a>
   </div>
 
-  <!-- ── 5 What changes ──────────────────────────────────── -->
+  <!-- ── 5 Combined scenario ─────────────────────────────── -->
   <div class="afi-g-panel" role="tabpanel" id="afi-p5" aria-labelledby="afi-t5" hidden>
-    <h3 class="afi-g-h">What the scenarios change by 2043, and what it costs</h3>
-    <p class="afi-g-p">Each row compares a scenario with the Current Path in 2043. The gains come with higher carbon emissions.</p>
+    <h3 class="afi-g-h">Acting on all eight sectors at once raises incomes, shrinks the informal economy and spreads the gains</h3>
+    <p class="afi-g-p">The Combined scenario runs all eight sectoral scenarios together, from governance and health to trade and infrastructure. Each pair of bars compares it with the Current Path in 2043.</p>
     <figure class="afi-g-fig">
-      <div class="afi-g-key"><span class="dot" style="--c:var(--cp)">Current Path, 2043</span><span class="dot" style="--c:var(--sc)">Scenario, 2043</span></div>
-      <div class="afi-g-db" data-chart="dumbbell"></div>
-      <figcaption class="afi-g-cap keep">* Current Path value worked out from the difference quoted in the report.</figcaption>
+      <div class="afi-g-key keep"><span class="sq" style="--c:var(--cp)">Current Path, 2043</span><span class="sq" style="--c:var(--sc)">Combined scenario, 2043</span></div>
+      <div class="afi-g-cmp" data-chart="combined"></div>
+      <figcaption class="afi-g-cap">GDP per capita at purchasing power parity. Government revenue excludes aid. The Gini coefficient runs from 0 (everyone has the same income) to 1.</figcaption>
     </figure>
-    <a class="afi-g-link" href="https://futures.issafrica.org/geographic/countries/sudan/#03-scenarios" target="_top">All eight scenarios →</a>
+    <a class="afi-g-link" href="https://futures.issafrica.org/geographic/countries/sudan/#04-comparisons" target="_top">Combined scenario →</a>
   </div>
 
   <p class="afi-g-foot">Source: ISS African Futures, <a href="https://futures.issafrica.org/geographic/countries/sudan/" target="_top">Sudan Development Futures</a>, IFs v7.38, last updated 15 June 2026. War figures as quoted in the report.</p>
@@ -324,14 +353,11 @@ ratio: {        // working-age people (15-64) per dependant, one value a year fr
       {name:'Financial Flows', l:4, r:4}
     ]
   },
-  dumbbell: [       // [label, scenario, Current Path, scenario value, unit, max, flags]
-    {label:'Extreme poverty',     scen:'Combined',   cp:38.8, sc:18,   unit:'%',        max:45},
-    {label:'Informal sector',     scen:'Combined',   cp:14.7, sc:5.8,  unit:'% of GDP', max:16},
-    {label:'Net crop imports',    scen:'Agriculture',cp:45.9, sc:25,   unit:'% of demand', max:50},
-    {label:'Trade deficit',       scen:'AfCFTA',     cp:13.6, sc:11.4, unit:'% of GDP', max:16},
-    {label:'Adult education',     scen:'Education',  cp:5.9,  sc:7.6,  unit:' years',   max:8.5, derived:true},
-    {label:'Life expectancy',     scen:'Combined',   cp:68.9, sc:73.1, unit:' years',   max:80,  derived:true},
-    {label:'Carbon emissions',    scen:'Combined',   cp:8.6,  sc:11.4, unit:' Mt',      max:12.5, derived:true, cost:true}
+  combined: [      // 2043. All from the Combined scenario analysis under "Scenario Comparisons"
+    {label:'GDP per capita',     unit:'US$, purchasing power parity', cp:2384, sc:3176, f:'usd', note:'Chart 31; CP also in "Current Path"'},
+    {label:'Informal economy',   unit:'% of GDP · lower is better',   cp:14.7, sc:5.8,  f:'pct', note:'Chart 33'},
+    {label:'Government revenue', unit:'% of GDP, excluding aid',      cp:8.5,  sc:10.3, f:'pct', note:'Chart 33 text'},
+    {label:'Inequality',         unit:'Gini coefficient · lower is better', cp:0.30, sc:0.26, f:'dec2', note:'Chart 34 text'}
   ]
 };
 
@@ -485,12 +511,27 @@ function dumbbell(host,rows){
   });
 }
 
+function combined(host,rows){
+  var F={usd:function(v){return 'US$'+String(v).replace(/\B(?=(\d{3})+(?!\d))/g,' ')},
+         pct:function(v){return v+'%'}, dec2:function(v){return v.toFixed(2)}};
+  host.innerHTML='';
+  rows.forEach(function(r){
+    var f=F[r.f], max=Math.max(r.cp,r.sc), w=function(v){return (v/max*100).toFixed(1)+'%'};
+    host.insertAdjacentHTML('beforeend',
+      '<div class="c"><p class="lab"><b>'+r.label+'</b> <span>'+r.unit+'</span></p><div class="bars">'+
+        '<span class="trk" aria-hidden="true"><i style="width:'+w(r.cp)+'"></i></span><span class="v"><span class="afi-sr">Current Path: </span>'+f(r.cp)+'</span>'+
+        '<span class="trk sc" aria-hidden="true"><i style="width:'+w(r.sc)+'"></i></span><span class="v sc"><span class="afi-sr">Combined scenario: </span>'+f(r.sc)+'</span>'+
+      '</div></div>');
+  });
+}
+
 var root=document.getElementById('afi-glance');
 function draw(){
   root.querySelectorAll('[data-chart]').forEach(function(h){
     var k=h.getAttribute('data-chart');
     if(h.closest('[hidden]')) return;             // drawn when its tab opens
     if(k==='dumbbell'){ if(!h.childElementCount) dumbbell(h,DATA.dumbbell); return; }
+    if(k==='combined'){ if(!h.childElementCount) combined(h,DATA.combined); return; }
     var key=h.clientWidth+'x'+(FRAMED?h.clientHeight:0);
     if(h._k===key) return; h._k=key; h.innerHTML='';
     var svg = k==='gdp'?fork(h,DATA.gdp): k==='poverty'?fork(h,DATA.poverty): k==='pop'?pop(h,DATA.pop): k==='ratio'?ratio(h,DATA.ratio): levers(h,DATA.levers);
@@ -540,7 +581,7 @@ function fit(){
   root.querySelectorAll('.afi-fit-hide').forEach(function(e){e.classList.remove('afi-fit-hide')});
   function room(){
     var foot=root.querySelector('.afi-g-foot').getBoundingClientRect(), hosts=p.querySelectorAll('[data-chart]'), ok=true;
-    hosts.forEach(function(h){ if(h.getAttribute('data-chart')==='dumbbell'){ var last=h.lastElementChild; if(last && last.getBoundingClientRect().bottom>h.getBoundingClientRect().bottom+1) ok=false; } else if(h.getBoundingClientRect().height<MIN) ok=false; });   // exact, not the rounded clientHeight
+    hosts.forEach(function(h){ if(h.getAttribute('data-chart')==='combined'){ if(h.scrollHeight>h.clientHeight+1) ok=false; } else if(h.getAttribute('data-chart')==='dumbbell'){ var last=h.lastElementChild; if(last && last.getBoundingClientRect().bottom>h.getBoundingClientRect().bottom+1) ok=false; } else if(h.getBoundingClientRect().height<MIN) ok=false; });   // exact, not the rounded clientHeight
     var link=p.querySelector('.afi-g-link'); if(link && link.getBoundingClientRect().bottom>foot.top+1) ok=false;
     return ok;
   }

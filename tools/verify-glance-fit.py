@@ -8,7 +8,8 @@ Serves the repository locally, embeds the block in a host page as an iframe
   3. each chart box is at least 150px tall, and the drawn chart is no taller
   4. no two text labels in a chart overlap, none falls outside the chart,
      and no drawn line (data or reference; not gridlines) runs through a label
-  5. the last scenario row doesn't run into the caption below it
+  5. the last scenario row doesn't run into the caption below it, and the
+     comparison cards fit their box
   6. there is no sideways scrolling
 
 Usage:
@@ -83,6 +84,11 @@ CHECK = r"""
     const cap = [...panel.querySelectorAll('.afi-g-cap')].find(e => e.offsetParent && e.getBoundingClientRect().top >= db.getBoundingClientRect().top);
     if (last && cap && last.getBoundingClientRect().bottom > cap.getBoundingClientRect().top + 0.5) P.push('last row runs into caption');
     if (db.scrollHeight > db.clientHeight + 1) P.push('rows overflow list box');
+  }
+  const cmp = panel.querySelector('.afi-g-cmp');
+  if (cmp) {
+    if (cmp.scrollHeight > cmp.clientHeight + 1) P.push('cards overflow their box');
+    for (const e of cmp.querySelectorAll('.c')) if (e.scrollWidth > e.clientWidth + 1) P.push('card too narrow: ' + e.querySelector('b').textContent);
   }
   return P;
 }
