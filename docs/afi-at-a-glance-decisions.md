@@ -60,11 +60,13 @@ The block detects that it is in an iframe (`window.self !== window.top`, or
 
 **Charts are never squeezed below 150 px.** When the open panel has too little
 room, `fit()` hides optional lines one at a time, re-measuring after each, until
-every chart box is at least 150 px tall, the scenario rows fit in their box and
-the section link sits above the source line. The order is fixed:
+every chart box is at least 150 px tall (measured exactly, not rounded), the
+scenario rows fit in their box and the section link sits above the source line. The order is fixed:
 
 1. the sub-headline (`.afi-g-dek`)
-2. the legend (`.afi-g-key`) — the line ends are labelled anyway
+2. the legend (`.afi-g-key`) — the line ends are labelled anyway. A legend
+   marked `.keep` is never hidden: the ratio chart's is, because at phone
+   widths there is no room to name its lines at their ends
 3. the tab's paragraph (`.afi-g-p`)
 4. the captions (`.afi-g-cap`)
 
@@ -90,7 +92,9 @@ listens yet; it only matters if the web team ever adds a resize listener.
   - `fork()` — the history line splitting into Current Path (dashed navy) and
     the scenario (orange)
   - `pop()` — population columns
-  - `ratio()` — the working-age ratio bar against the 1.7 threshold
+  - `ratio()` — a small line chart of working-age people per dependant, one
+    value a year, Current Path (dashed navy) against the scenario (orange),
+    with the 1.7 threshold as a dashed green rule
   - `levers()` — the ranking chart
   - `dumbbell()` — the "what changes by 2043" rows
 - **Tabs** are full ARIA tabs that work with the arrow keys, Home and End.
@@ -112,16 +116,21 @@ listens yet; it only matters if the web team ever adds a resize listener.
   de-emphasised series.
 - Text is always in ink colours, never series colours; the dot carries the
   colour.
-- Lines join only the values quoted in the report, and the captions say so. They
-  are not annual data.
+- On the history charts, lines join only the values quoted in the report, and
+  the captions say so. They are not annual data. The ratio chart is annual data
+  from an IFs extract.
+- A label beside the first history point goes below it when the line rises
+  from it, and above it when the line falls, so the line never crosses it.
 
 ## Making a new country
 
 1. Copy the template to the repo root as `<country>-at-a-glance.html`.
 2. Use the same five-tab pattern, but choose the findings that suit that report.
 3. Replace everything marked `PER COUNTRY`, and `DATA`.
-4. **Use only figures quoted on the report page.** Where the page only gives a
-   difference, a value may be worked out from it: mark it `derived: true`
+4. **Use only figures quoted on the report page**, or an annual series from an
+   IFs extract supplied for the purpose (say which file in the `DATA` comment,
+   and check its end value against the figure the page quotes). Where the page
+   only gives a difference, a value may be worked out from it: mark it `derived: true`
    (it gets a `*`), keep the `.keep` caption, and note how it was worked out.
    Never invent provenance: the model version and date in the source line come
    from the report page.
@@ -146,7 +155,8 @@ host page, and checks every tab at each height and width:
 1. the source line sits inside the iframe
 2. nothing in the open panel runs into the source line
 3. each chart box is at least 150 px tall, and the drawn chart is no taller
-4. no two text labels in a chart overlap, and none falls outside the chart
+4. no two text labels in a chart overlap, none falls outside the chart, and no
+   drawn line (data or reference, not gridlines) runs through a label
 5. the last scenario row doesn't run into the caption below it
 6. there is no sideways scrolling
 

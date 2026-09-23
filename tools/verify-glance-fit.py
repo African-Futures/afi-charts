@@ -6,7 +6,8 @@ Serves the repository locally, embeds the block in a host page as an iframe
   1. the source line sits inside the iframe
   2. nothing in the open panel runs into the source line
   3. each chart box is at least 150px tall, and the drawn chart is no taller
-  4. no two text labels in a chart overlap, and none falls outside the chart
+  4. no two text labels in a chart overlap, none falls outside the chart,
+     and no drawn line (data or reference; not gridlines) runs through a label
   5. the last scenario row doesn't run into the caption below it
   6. there is no sideways scrolling
 
@@ -45,6 +46,31 @@ CHECK = r"""
     const t = [...svg.querySelectorAll('text')].map(e => ({s: e.textContent, r: e.getBoundingClientRect()})).filter(o => o.r.width > 0);
     for (const o of t) if (o.r.left < sr.left - 1 || o.r.right > sr.right + 1 || o.r.top < sr.top - 1 || o.r.bottom > sr.bottom + 1)
       P.push(c.dataset.chart + ' label outside: ' + o.s);
+    // labels against the drawn lines (data lines and reference lines, not gridlines);
+    // white text sits on a mark by design, so it is left out
+    const M = svg.getScreenCTM(), segs = [];
+    const pt = (x, y) => ({x: M.a * x + M.c * y + M.e, y: M.b * x + M.d * y + M.f});
+    for (const el of svg.querySelectorAll('polyline, line')) {
+      if ((el.getAttribute('stroke') || '').toLowerCase() === '#d1d2d4') continue;
+      const p = el.tagName === 'line'
+        ? [pt(+el.getAttribute('x1'), +el.getAttribute('y1')), pt(+el.getAttribute('x2'), +el.getAttribute('y2'))]
+        : el.getAttribute('points').trim().split(/\s+/).map(s => s.split(',').map(Number)).map(([x, y]) => pt(x, y));
+      for (let k = 1; k < p.length; k++) segs.push([p[k - 1], p[k]]);
+    }
+    const onMark = e => /fill:\s*#fff/i.test(e.getAttribute('style') || '');
+    for (const e of svg.querySelectorAll('text')) {
+      if (onMark(e)) continue;
+      const r = e.getBoundingClientRect(); if (!r.width) continue;
+      const hit = segs.some(([a, b]) => {
+        const n = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y)));
+        for (let k = 0; k <= n; k++) {
+          const x = a.x + (b.x - a.x) * k / n, y = a.y + (b.y - a.y) * k / n;
+          if (x > r.left + 1 && x < r.right - 1 && y > r.top + 1 && y < r.bottom - 1) return true;
+        }
+        return false;
+      });
+      if (hit) P.push(c.dataset.chart + ' line through label: ' + e.textContent);
+    }
     for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) {
       const a = t[i].r, b = t[j].r;
       if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1)

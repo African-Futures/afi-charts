@@ -79,12 +79,12 @@
 }
 
 /* tabs */
-.afi-g-tabs{display:none; margin:20px 0 0; gap:0; border-bottom:1px solid var(--grid); overflow-x:auto; scrollbar-width:none}
+.afi-g-tabs{display:none; margin:0; gap:0; border-bottom:1px solid var(--grid); overflow-x:auto; scrollbar-width:none}
 .afi-g-tabs::-webkit-scrollbar{display:none}
 .js .afi-g-tabs{display:flex}
-@container (max-width:620px){ .afi-g-tabs{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent); mask-image:linear-gradient(90deg,#000 85%,transparent)} .afi-g .afi-g-tab{flex:0 0 auto; padding:8px 10px 9px} }
+@container (max-width:620px){ .afi-g-tabs{-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent); mask-image:linear-gradient(90deg,#000 85%,transparent)} .afi-g .afi-g-tab{flex:0 0 auto; padding:10px 10px 7px} }
 .afi-g-tab{flex:1 0 auto; appearance:none; background:none; border:0; border-bottom:3px solid transparent; margin-bottom:-1px;
-  font:inherit; font-size:13.5px; font-weight:600; color:var(--muted); padding:8px 12px 9px; cursor:pointer; text-align:center; white-space:nowrap}
+  font:inherit; font-size:13.5px; font-weight:600; color:var(--muted); padding:13px 12px 10px; cursor:pointer; text-align:center; white-space:nowrap}
 .afi-g-tab:first-child{margin-left:auto} .afi-g-tab:last-child{margin-right:auto}
 .afi-g-tab i{font-style:normal; font-weight:400; margin-right:6px; color:var(--muted)}
 .afi-g-tab:hover{color:var(--ink)}
@@ -182,7 +182,6 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
   .afi-framed .afi-g-war div{padding-left:10px}
   .afi-framed .afi-g-war b{font-size:17px}
   .afi-framed .afi-g-war span{font-size:11.5px}
-  .afi-framed .afi-g-tabs{margin-top:10px}
   .afi-framed .afi-g-p{font-size:13.5px; line-height:1.45; margin-bottom:6px!important}
   .afi-framed .afi-g-cap{font-size:11px; line-height:1.35}
   .afi-framed .afi-g-foot{font-size:11px; line-height:1.35}
@@ -254,8 +253,9 @@ html.afi-framed,html.afi-framed body{height:100%; overflow:hidden}
         <p class="afi-g-cap">Population, millions. 2043 is the Current Path forecast.</p>
       </div>
       <div>
-        <div class="afi-g-chart" data-chart="ratio" style="min-height:200px" role="img" aria-label="Working-age people per dependant in 2043, Demographics and Health scenario: 1.4. A ratio of 1.7 is needed to open a demographic window."></div>
-        <p class="afi-g-cap">Working-age people (15–64) per dependant, 2043.</p>
+        <div class="afi-g-key keep"><span class="dash" style="--c:var(--cp)">Current Path</span><span style="--c:var(--sc)">Demographics and Health</span></div>
+        <div class="afi-g-chart" data-chart="ratio" style="min-height:200px" role="img" aria-label="Working-age people per dependant, 2020 to 2043: 1.25 in 2020. In 2043: 1.38 on the Current Path and 1.41 in the Demographics and Health scenario. A ratio of 1.7 is needed to open a demographic window."></div>
+        <p class="afi-g-cap">Working-age people (15–64) per dependant.</p>
       </div>
     </figure>
     <a class="afi-g-link" href="https://futures.issafrica.org/geographic/countries/sudan/#demographics-health" target="_top">Demographics and Health scenario →</a>
@@ -308,7 +308,13 @@ var DATA = {
     gap: '17.3m fewer people in poverty'
   },
   pop: [[1990,22,'hist'],[2022,52,'hist'],[2043,81.7,'cp']],   // millions
-  ratio: { value:1.4, threshold:1.7, min:1.0, max:2.0 },
+ratio: {        // working-age people (15-64) per dependant, one value a year from 2020.
+                    // IFs extract "Sheet 11 (12).xlsx". The 2043 scenario value (1.41)
+                    // is the 1.4 quoted in "Demographics and Health"; 1.7 is quoted there too.
+    from:2020, threshold:1.7, y:[1.2,1.8], ticks:[1.2,1.4,1.6], scName:'Demographics and Health',
+    cp: [1.251,1.260,1.271,1.280,1.267,1.270,1.286,1.297,1.302,1.305,1.309,1.314,1.319,1.325,1.333,1.340,1.345,1.348,1.353,1.361,1.366,1.370,1.376,1.384],
+    sc: [1.251,1.260,1.271,1.280,1.267,1.270,1.286,1.297,1.302,1.305,1.308,1.314,1.319,1.325,1.333,1.341,1.346,1.352,1.358,1.369,1.377,1.386,1.397,1.411]
+  },
   levers: {         // rank 1 = biggest impact. "Scenario Comparisons"
     left:'GDP per capita', right:'Poverty reduction',
     rows:[
@@ -372,7 +378,8 @@ function fork(host,d){
     S('title',{},g).textContent=p[0]+': '+d.fmt(p[1])+(p[2]?' ('+p[2]+')':'');
     S('circle',{cx:x(p[0]),cy:y(p[1]),r:4,fill:C.cp,stroke:'#fff','stroke-width':1.5},g);
     var pos=p[3]||(i===0?'right':'above'), cx=x(p[0]), cy=y(p[1]), anchor='middle', dx=0, ty;
-    if(pos==='right'){anchor='start'; dx=8; ty=cy-(p[2]?18:4);} else if(pos==='below'){ty=cy+18;} else {ty=cy-(p[2]?28:10); if(ty<12 && p[2]){ p=[p[0],p[1]]; ty=cy-10; } ty=Math.max(ty,11);}
+    // a 'right' label goes below the point when the line rises from it, above when it falls
+    if(pos==='right'){anchor='start'; dx=8; var nx=d.history[i+1]; ty=(nx && nx[1]>p[1]) ? cy+16 : cy-(p[2]?18:4);} else if(pos==='below'){ty=cy+18;} else {ty=cy-(p[2]?28:10); if(ty<12 && p[2]){ p=[p[0],p[1]]; ty=cy-10; } ty=Math.max(ty,11);}
     T(d.fmt(p[1]),{x:cx+dx,y:ty,'text-anchor':anchor,'class':'t-ink t-b'},g);
     if(p[2]) T(p[2],{x:cx+dx,y:ty+17,'text-anchor':anchor,'class':'t-s'},g);
   });
@@ -416,19 +423,30 @@ function pop(host,rows){
 }
 
 function ratio(host,d){
-  var W=host.clientWidth||300, H=hgt(host,200), m={l:10,r:14};
+  var W=host.clientWidth||300, H=hgt(host,200), n=d.cp.length, last=d.from+n-1, m={l:26,r:36,t:10,b:20};
   var svg=S('svg',{viewBox:'0 0 '+W+' '+H,width:W,height:H});
-  var x=lin(d.min,d.max,m.l,W-m.r), cy=Math.round(Math.max(66,Math.min(112,H*0.5)));
-  S('rect',{x:x(d.min),y:cy-9,width:x(d.max)-x(d.min),height:18,fill:C.panel,rx:2},svg);
-  S('rect',{x:x(d.threshold),y:cy-9,width:x(d.max)-x(d.threshold),height:18,fill:'#cfe6d7'},svg);
-  S('rect',{x:x(d.min),y:cy-9,width:x(d.value)-x(d.min),height:18,fill:C.sc,rx:2},svg);
-  [1,1.5,2].forEach(function(t){T(t.toFixed(1),{x:x(t),y:cy+30,'text-anchor':t===1?'start':t===2?'end':'middle','class':'t-s'},svg)});
-  // value
-  T(d.value.toFixed(1)+' : 1',{x:x(d.min),y:cy-34,'text-anchor':'start','class':'t-ink t-b',style:'font-size:22px'},svg);
-  T(W<260?'Demogr. & Health, 2043':'Demographics and Health, 2043',{x:x(d.min),y:cy-16,'text-anchor':'start','class':'t-s'},svg);
+  var x=lin(d.from,last,m.l,W-m.r), y=lin(d.y[0],d.y[1],H-m.b,m.t);
+  d.ticks.forEach(function(t){
+    S('line',{x1:m.l,x2:W-m.r,y1:y(t),y2:y(t),stroke:C.grid,'stroke-width':t===d.y[0]?1:.75,'shape-rendering':'crispEdges'},svg);
+    T(t.toFixed(1),{x:m.l-5,y:y(t)+4,'text-anchor':'end','class':'t-s'},svg);
+  });
+  T(d.from,{x:m.l,y:H-5,'text-anchor':'start','class':'t-s'},svg);
+  T(last,{x:x(last),y:H-5,'text-anchor':'end','class':'t-s'},svg);
   // threshold
-  S('line',{x1:x(d.threshold),x2:x(d.threshold),y1:cy-14,y2:cy+38,stroke:'#0e5630','stroke-width':1.5,'stroke-dasharray':'3 3'},svg);
-  T((W<260?'Window at ':'Window opens at ')+d.threshold,{x:W<260?W-2:x(d.threshold),y:cy+50,'text-anchor':W<260?'end':'middle','class':'t-ink t-s t-b'},svg);
+  S('line',{x1:m.l,x2:W-m.r,y1:y(d.threshold),y2:y(d.threshold),stroke:'#0e5630','stroke-width':1.5,'stroke-dasharray':'3 3'},svg);
+  T((W<220?'Window at ':'Window opens at ')+d.threshold,{x:m.l,y:y(d.threshold)-6,'class':'t-ink t-s t-b'},svg);
+  // scenario underneath, Current Path dashed on top (they share the early years)
+  function pts(a){return a.map(function(v,i){return x(d.from+i)+','+y(v)}).join(' ')}
+  S('polyline',{points:pts(d.sc),fill:'none',stroke:C.sc,'stroke-width':2.5,'stroke-linejoin':'round'},svg);
+  S('polyline',{points:pts(d.cp),fill:'none',stroke:C.cp,'stroke-width':2,'stroke-dasharray':'6 4'},svg);
+  // end values (text in ink; the dot carries the colour), pushed apart when close
+  var ly={cp:y(d.cp[n-1]), sc:y(d.sc[n-1])};
+  if(Math.abs(ly.cp-ly.sc)<18){ var mid=(ly.cp+ly.sc)/2, up=ly.sc<=ly.cp?'sc':'cp'; ly[up]=mid-9; ly[up==='sc'?'cp':'sc']=mid+9; }
+  [['sc',d.sc[n-1],d.scName],['cp',d.cp[n-1],'Current Path']].forEach(function(e){
+    var g=S('g',{},svg); S('title',{},g).textContent=last+', '+e[2]+': '+e[1].toFixed(2);
+    S('circle',{cx:x(last),cy:y(e[1]),r:3.5,fill:C[e[0]],stroke:'#fff','stroke-width':1},g);
+    T(e[1].toFixed(2),{x:x(last)+7,y:ly[e[0]]+4,'class':'t-ink t-b'},g);
+  });
   return svg;
 }
 
@@ -518,11 +536,11 @@ var MIN=150;
 function fit(){
   if(!FRAMED) return;
   var p=root.querySelector('[role=tabpanel]:not([hidden])'); if(!p) return;
-  var opt=[root.querySelector('.afi-g-dek'), p.querySelector('.afi-g-key'), p.querySelector('.afi-g-p')].concat([].slice.call(p.querySelectorAll('.afi-g-cap:not(.keep)')));
+  var opt=[root.querySelector('.afi-g-dek'), p.querySelector('.afi-g-key:not(.keep)'), p.querySelector('.afi-g-p')].concat([].slice.call(p.querySelectorAll('.afi-g-cap:not(.keep)')));
   root.querySelectorAll('.afi-fit-hide').forEach(function(e){e.classList.remove('afi-fit-hide')});
   function room(){
     var foot=root.querySelector('.afi-g-foot').getBoundingClientRect(), hosts=p.querySelectorAll('[data-chart]'), ok=true;
-    hosts.forEach(function(h){ if(h.getAttribute('data-chart')==='dumbbell'){ var last=h.lastElementChild; if(last && last.getBoundingClientRect().bottom>h.getBoundingClientRect().bottom+1) ok=false; } else if(h.clientHeight<MIN) ok=false; });
+    hosts.forEach(function(h){ if(h.getAttribute('data-chart')==='dumbbell'){ var last=h.lastElementChild; if(last && last.getBoundingClientRect().bottom>h.getBoundingClientRect().bottom+1) ok=false; } else if(h.getBoundingClientRect().height<MIN) ok=false; });   // exact, not the rounded clientHeight
     var link=p.querySelector('.afi-g-link'); if(link && link.getBoundingClientRect().bottom>foot.top+1) ok=false;
     return ok;
   }
