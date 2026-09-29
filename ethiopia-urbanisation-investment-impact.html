@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impact of the Urbanisation Investment scenario on GDP, GDP per capita and poverty, 2022–2050</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* ============================================================
+   AFI chart — line chart template, tabbed variant
+   One iframe, several indicators that share a pair of scenarios.
+   Same tokens, footer, table view, PNG export and height contract
+   as the line template. The tab row is fixed height, and the
+   subtitle is shared by every tab, so switching never changes the
+   figure's height inside the fixed iframe.
+   ============================================================ */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:pretty}   /* fill the first line, no orphan */
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 12px; max-width:64ch}
+
+/* indicator tabs: one row, never wraps, so the figure height is constant */
+.afi-tabs{display:flex; gap:6px; margin:0 0 10px; flex-wrap:nowrap}
+.afi-tab{font-family:var(--body); font-size:12.5px; color:var(--label);
+  background:var(--surface); border:1px solid var(--grid); border-radius:4px;
+  padding:5px 11px; cursor:pointer; white-space:nowrap}
+.afi-tab:hover{border-color:var(--label); color:var(--ink)}
+.afi-tab[aria-selected="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+.afi-tab:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.endlabel{font-size:12.5px; font-weight:500}
+.endlabel.ref{font-weight:400; fill:var(--label)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.hoverline{stroke:var(--label); stroke-width:1; stroke-dasharray:3 3}
+.hoverdot{stroke:var(--surface); stroke-width:2}
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip td.x{text-align:right; padding-left:10px; color:var(--label); font-variant-numeric:tabular-nums}
+.tip tr.tot td{border-top:1px solid var(--grid); padding-top:4px; font-weight:600}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* height set from CONFIG.height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="afi-tabs" id="tabs" role="tablist" aria-label="Indicator"></div>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   ============================================================ */
+const CONFIG = {
+  "title": "Impact of the Urbanisation Investment scenario on GDP, GDP per capita and poverty, 2022–2050",
+  "subtitle": "Ethiopia, Urbanisation Investment scenario compared with the Current Path. Hover or tap for the gap between the two in each year.",
+  "source": "International Futures version 8.72, Current Path and Urbanisation Investment scenarios",
+  "sourceUrl": "https://korbel.du.edu/pardee/",
+  "forecastFrom": null,
+  "forecastShade": false,
+  "xPad": 1,
+  "height": 440,
+  "panels": [
+    {
+      "key": "gdp",
+      "tab": "GDP",
+      "shortUnit": "US$ bn",
+      "yTitle": "GDP at market exchange rates, US$ billion (2021 dollars)",
+      "prefix": "$",
+      "suffix": "bn",
+      "decimals": 0,
+      "axisDecimals": 0
+    },
+    {
+      "key": "gdppc",
+      "tab": "GDP per capita",
+      "shortUnit": "US$",
+      "yTitle": "GDP per person at purchasing power parity, US$ (2021 dollars)",
+      "prefix": "$",
+      "suffix": "",
+      "decimals": 0,
+      "axisDecimals": 0
+    },
+    {
+      "key": "pov",
+      "tab": "Extreme poverty",
+      "shortUnit": "% of population",
+      "yTitle": "Population below US$3 a day (2021 PPP), %",
+      "prefix": "",
+      "suffix": "%",
+      "decimals": 1,
+      "axisDecimals": 0,
+      "diffSuffix": " pp",
+      "extra": {
+        "name": "People",
+        "suffix": "m",
+        "decimals": 1
+      }
+    }
+  ]
+};
+
+const DATA = {"years": [2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047, 2048, 2049, 2050], "series": [{"name": "Current Path"}, {"name": "Urbanisation Investment"}], "panels": {"gdp": {"values": {"Current Path": [114.9, 122.5, 131.8, 143.8, 157.1, 169.5, 183.5, 197.0, 211.8, 227.4, 243.7, 261.2, 280.4, 301.5, 324.6, 349.8, 377.4, 407.7, 440.4, 475.5, 513.1, 553.3, 596.1, 641.5, 689.5, 740.2, 793.7, 849.9, 909.3], "Urbanisation Investment": [114.9, 122.5, 131.8, 143.8, 157.1, 169.5, 183.5, 197.5, 213.1, 229.7, 247.4, 266.7, 288.3, 312.5, 339.5, 369.8, 403.3, 440.2, 480.8, 525.3, 574.2, 627.7, 686.1, 749.6, 818.4, 892.9, 973.2, 1061.0, 1157.0]}}, "gdppc": {"values": {"Current Path": [2597.15, 2674.54, 2758.2, 2896.24, 3041.99, 3145.03, 3260.02, 3359.68, 3477.07, 3595.67, 3714.92, 3840.76, 3975.92, 4122.26, 4279.04, 4446.74, 4625.96, 4817.65, 5019.04, 5229.22, 5448.07, 5674.74, 5908.79, 6150.36, 6398.36, 6652.78, 6913.44, 7180.25, 7455.47], "Urbanisation Investment": [2597.15, 2674.54, 2758.2, 2896.24, 3041.99, 3145.04, 3258.59, 3364.94, 3490.55, 3619.97, 3752.99, 3895.75, 4051.6, 4223.38, 4411.49, 4617.53, 4838.36, 5074.97, 5326.85, 5595.19, 5880.15, 6182.57, 6501.89, 6837.42, 7189.31, 7558.74, 7947.13, 8365.42, 8821.15]}}, "pov": {"values": {"Current Path": [37.02, 34.91, 32.16, 29.3, 27.06, 25.48, 23.67, 21.92, 20.21, 18.54, 16.97, 15.45, 14.07, 12.76, 11.6, 10.57, 9.64222, 8.79043, 8.01501, 7.30104, 6.63063, 5.99651, 5.39373, 4.81794, 4.27915, 3.7783, 3.31844, 2.87192, 2.46595], "Urbanisation Investment": [37.02, 34.91, 32.16, 29.3, 27.06, 25.48, 23.69, 21.87, 20.07, 18.29, 16.61, 14.99, 13.53, 12.16, 10.92, 9.81937, 8.85639, 8.01054, 7.26307, 6.5622, 5.88596, 5.2269, 4.59653, 3.99858, 3.41043, 2.87848, 2.36773, 1.8818, 1.45743]}, "extra": {"Current Path": [46.41, 44.88, 42.38, 39.56, 37.44, 36.12, 34.37, 32.59, 30.76, 28.86, 27.01, 25.14, 23.37, 21.65, 20.07, 18.65, 17.34, 16.1, 14.95, 13.86, 12.8, 11.77, 10.76, 9.76151, 8.80251, 7.88762, 7.02741, 6.16652, 5.36627], "Urbanisation Investment": [46.41, 44.88, 42.38, 39.56, 37.44, 36.12, 34.4, 32.52, 30.53, 28.47, 26.44, 24.39, 22.48, 20.61, 18.89, 17.32, 15.92, 14.67, 13.54, 12.45, 11.36, 10.25, 9.16236, 8.09475, 7.00842, 6.00183, 5.00665, 4.03354, 3.16517]}}}};
+
+/* ============================================================
+   AFI design system — shared by every chart type.
+   ============================================================ */
+const RAMP = ["#172859","#e67500","#004ea2","#389d63","#892e88","#e79f2b","#9e234f","#5791cd"];
+const INK="#172859", LABEL="#58585a", MUTED="#7d8899", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff";
+
+const years = DATA.years;
+const SERIES = DATA.series.map((s,i) => ({...s, color: RAMP[i], width: 2}));
+if (SERIES.length > RAMP.length)
+  console.warn(`${SERIES.length} series exceeds the ${RAMP.length}-slot ramp.`);
+
+/* ---- the active indicator ---- */
+let P = CONFIG.panels[0];
+const vals = name => DATA.panels[P.key].values[name];
+const fmtCache = new Map();
+const f = spec => { if (!fmtCache.has(spec)) fmtCache.set(spec, d3.format(spec)); return fmtCache.get(spec); };
+const fmt  = v => v == null ? "—" : (P.prefix||"") + f(`,.${P.decimals}f`)(v) + (P.suffix||"");
+const fmtAxis = v => (P.prefix||"") + f(`,.${P.axisDecimals ?? 0}f`)(v) + (P.suffix||"");
+/* a difference is signed, and carries the panel's own unit */
+const fmtDiff = v => v == null ? "—"
+  : (v > 0 ? "+" : v < 0 ? "−" : "") + (P.diffPrefix ?? P.prefix ?? "")
+    + f(`,.${P.diffDecimals ?? P.decimals}f`)(Math.abs(v)) + (P.diffSuffix ?? P.suffix ?? "");
+const fmtExtra = v => v == null ? "—" : f(`,.${P.extra.decimals}f`)(v) + (P.extra.suffix||"");
+const diffAt = i => {
+  const [a, b] = SERIES.map(s => vals(s.name)[i]);
+  return (a == null || b == null) ? null : b - a;
+};
+
+/* ---- scaffolding ---- */
+document.getElementById("title").textContent = CONFIG.title;
+document.getElementById("subtitle").textContent = CONFIG.subtitle;
+document.getElementById("source").innerHTML =
+  "Source: " + (CONFIG.sourceUrl
+    ? `<a href="${CONFIG.sourceUrl}" target="_blank" rel="noopener">${CONFIG.source}</a>`
+    : CONFIG.source);
+
+const tabs = d3.select("#tabs").selectAll("button").data(CONFIG.panels).join("button")
+  .attr("class","afi-tab").attr("type","button").attr("role","tab")
+  .attr("aria-selected", d => String(d === P))
+  .text(d => d.tab)
+  .on("click", (ev, d) => {
+    P = d;
+    tabs.attr("aria-selected", t => String(t === P));
+    buildTable(); render();
+  });
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+let W = 0;
+
+function probeCtx(){
+  return probeCtx._c || (probeCtx._c = document.createElement("canvas").getContext("2d"));
+}
+function textW(str, font){ const c = probeCtx(); c.font = font; return c.measureText(String(str)).width; }
+function ellipsis(str, font, maxW){
+  if (textW(str, font) <= maxW) return String(str);
+  let s = String(str);
+  while (s.length > 1 && textW(s + "…", font) > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+
+function render(){
+  const node = document.querySelector(".afi");
+  W = node.clientWidth || 780;
+  const narrow = W < 560;
+  const bodyFont = getComputedStyle(document.body).fontFamily;
+  const tickFont = `400 12px ${bodyFont}`, endFont = `500 12.5px ${bodyFont}`;
+
+  const allVals = SERIES.flatMap(s => vals(s.name)).filter(v => v != null);
+  const [dLo, dHi] = d3.extent(allVals);
+  const y = d3.scaleLinear().domain([P.yMin ?? dLo, P.yMax ?? dHi]);
+  /* nice to the same tick count that is drawn, so the floor sits on a gridline */
+  if (P.yMin == null && P.yMax == null) y.nice(6);
+  const yTicks = y.ticks(6);
+
+  /* the right margin fits the widest end label, measured, not guessed */
+  const lastOf = s => { const v = vals(s.name);
+    for (let i = v.length-1; i >= 0; i--) if (v[i] != null) return {v: v[i], i}; };
+  const widestLabel = Math.max(...SERIES.map(s => textW(`${s.name} ${fmt(lastOf(s).v)}`, endFont)));
+  const widestTick  = Math.max(...yTicks.map(t => textW(fmtAxis(t), tickFont)));
+
+  /* Axis title in its own row above the plot (bar-template rule), so it can
+     never sit on the top gridline or run through the topmost tick. */
+  const titleH = 22;
+  const M = {
+    top: titleH + 8,
+    right: narrow ? 14 : Math.min(Math.ceil(widestLabel) + 22, Math.round(W * 0.4)),
+    bottom: 30, left: Math.ceil(widestTick) + 12
+  };
+  const legendH = narrow ? 52 : 0;
+  /* constant SVG height at every width: the narrow legend takes its space
+     from the plot rather than adding to the page */
+  const H = CONFIG.height;
+  const iw = Math.max(120, W - M.left - M.right);
+  const ih = H - M.top - M.bottom - legendH;
+  y.range([ih, 0]);
+
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
+  svg.append("text").attr("class","ytitle").attr("x", 0).attr("y", 13)
+     .text(ellipsis(P.yTitle, tickFont, W));
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const x = d3.scaleLinear()
+      .domain([years[0] - CONFIG.xPad, years[years.length-1]])
+      .range([0, iw]);
+
+  if (CONFIG.forecastFrom) {
+    if (CONFIG.forecastShade)
+      g.append("rect").attr("class","fcband")
+        .attr("x", x(CONFIG.forecastFrom)).attr("y", 0)
+        .attr("width", Math.max(0, iw - x(CONFIG.forecastFrom))).attr("height", ih);
+    g.append("line").attr("class","fcline")
+      .attr("x1", x(CONFIG.forecastFrom)).attr("x2", x(CONFIG.forecastFrom))
+      .attr("y1", 0).attr("y2", ih);
+    g.append("text").attr("class","fclabel")
+      .attr("x", x(CONFIG.forecastFrom) + 5).attr("y", ih - 6).text("Forecast →");
+  }
+
+  g.append("g").attr("class","grid")
+    .selectAll("line").data(yTicks).join("line")
+      .attr("x1",0).attr("x2",iw).attr("y1",y).attr("y2",y);
+
+  /* The first year is always labelled — D3's own picks left it off on narrow
+     screens. Every 5th year joins it where there is room for both 2022 and
+     2025 side by side; otherwise every 10th. */
+  const first = years[0], last = years[years.length-1];
+  const pxPerYear = iw / (last - first + CONFIG.xPad);
+  const step = pxPerYear * 3 >= 40 && !narrow ? 5 : 10;
+  const xt = [first, ...d3.range(Math.ceil((first+1)/step)*step, last+1, step)]
+    .filter((t,i,a) => i === 0 || (t - a[0]) * pxPerYear >= 36);
+  g.append("g").attr("class","axis")
+    .attr("transform",`translate(0,${ih})`)
+    .call(d3.axisBottom(x).tickValues(xt).tickFormat(d3.format("d")).tickSize(0).tickPadding(9));
+  g.append("g").attr("class","axis")
+    .call(d3.axisLeft(y).tickValues(yTicks).tickFormat(fmtAxis).tickSize(0).tickPadding(8));
+
+  const line = d3.line().defined(d => d.v != null).x(d => x(d.year)).y(d => y(d.v));
+  SERIES.forEach(s => {
+    g.append("path")
+      .datum(years.map((year,i) => ({year, v: vals(s.name)[i]})))
+      .attr("fill","none").attr("stroke", s.color).attr("stroke-width", s.width)
+      .attr("stroke-linejoin","round").attr("stroke-linecap","round")
+      .attr("d", line);
+  });
+
+  /* ---- end labels, de-collided ---- */
+  if (!narrow) {
+    const items = SERIES.map(s => { const l = lastOf(s);
+      return {s, y0: y(l.v), y1: y(l.v), val: l.v}; }).sort((a,b) => a.y0 - b.y0);
+    const MIN = 17;   /* one 12.5px label's full box, so neighbours never touch */
+    for (let pass=0; pass<80; pass++){
+      let moved = false;
+      for (let i=1;i<items.length;i++){
+        const gap = items[i].y1 - items[i-1].y1;
+        if (gap < MIN){ const push=(MIN-gap)/2; items[i-1].y1 -= push; items[i].y1 += push; moved = true; }
+      }
+      items[0].y1 = Math.max(items[0].y1, 6);
+      items[items.length-1].y1 = Math.min(items[items.length-1].y1, ih);
+      if (!moved) break;
+    }
+    items.forEach(it => {
+      if (Math.abs(it.y1 - it.y0) > 1.5)
+        g.append("path").attr("fill","none").attr("stroke", it.s.color).attr("stroke-width",1).attr("opacity",.45)
+          .attr("d", `M${iw},${it.y0} L${iw+7},${it.y0} L${iw+11},${it.y1}`);
+      /* ink, not the series colour — text never wears a series colour */
+      g.append("text").attr("class","endlabel")
+        .attr("x", iw + 14).attr("y", it.y1).attr("dy","0.32em").attr("fill", INK)
+        .text(ellipsis(`${it.s.name} ${fmt(it.val)}`, endFont, M.right - 16));
+    });
+  } else {
+    const lg = svg.append("g").attr("transform", `translate(${M.left},${M.top + ih + M.bottom + 14})`);
+    let cx = 0, cy = 0;
+    SERIES.forEach(s => {
+      const wpx = textW(s.name, `400 11.5px ${bodyFont}`) + 30;
+      if (cx && cx + wpx > iw){ cx = 0; cy += 17; }
+      const row = lg.append("g").attr("transform",`translate(${cx},${cy})`);
+      row.append("rect").attr("x",0).attr("y",-4).attr("width",11).attr("height",8).attr("rx",2).attr("fill",s.color);
+      row.append("text").attr("x",17).attr("dy","0.32em").attr("font-size",11.5).attr("fill",LABEL).text(s.name);
+      cx += wpx;
+    });
+  }
+
+  /* ---- hover ---- */
+  const hl = g.append("line").attr("class","hoverline").attr("y1",0).attr("y2",ih).style("display","none");
+  const dots = g.append("g").style("display","none");
+  const dotSel = dots.selectAll("circle").data(SERIES).join("circle")
+      .attr("class","hoverdot").attr("r",4).attr("fill",d=>d.color);
+
+  g.append("rect").attr("width",iw).attr("height",ih).attr("fill","none")
+    .style("pointer-events","all")
+    .on("mousemove touchmove", ev => {
+      const [mx] = d3.pointer(ev);
+      const yr = Math.max(first, Math.min(last, Math.round(x.invert(mx))));
+      const i = years.indexOf(yr); if (i < 0) return;
+      hl.style("display",null).attr("x1",x(yr)).attr("x2",x(yr));
+      dots.style("display",null);
+      dotSel.attr("cx", x(yr)).attr("cy", d => y(vals(d.name)[i]))
+            .style("display", d => vals(d.name)[i]==null ? "none" : null);
+      const ex = P.extra ? DATA.panels[P.key].extra : null;
+      const rows = SERIES
+        .map(s => ({s, v: vals(s.name)[i]}))
+        .filter(r => r.v != null)
+        .sort((a,b) => b.v - a.v)
+        .map(r => `<tr><td><span class="sw" style="background:${r.s.color}"></span>${r.s.name}</td>
+                       <td class="v">${fmt(r.v)}</td>${ex ? `<td class="x">${fmtExtra(ex[r.s.name][i])}</td>` : ""}</tr>`).join("");
+      const d = diffAt(i);
+      const exD = ex && ex[SERIES[1].name][i] != null && ex[SERIES[0].name][i] != null
+        ? ex[SERIES[1].name][i] - ex[SERIES[0].name][i] : null;
+      const diffRow = `<tr class="tot"><td>Difference</td><td class="v">${fmtDiff(d)}</td>` +
+        (ex ? `<td class="x">${exD == null ? "—" : (exD > 0 ? "+" : exD < 0 ? "−" : "") + fmtExtra(Math.abs(exD))}</td>` : "") + "</tr>";
+      const head = ex ? `<tr><td></td><td class="x">${P.shortUnit}</td><td class="x">${P.extra.name}</td></tr>` : "";
+      tip.attr("hidden", null)
+         .html(`<h4>${yr}${CONFIG.forecastFrom && yr>=CONFIG.forecastFrom ? " · forecast" : ""}</h4><table>${head}${rows}${diffRow}</table>`);
+      const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+      const px = M.left + x(yr);
+      tip.style("left", (px + 16 + tw > W ? px - 16 - tw : px + 16) + "px")
+         .style("top",  Math.max(4, M.top + ih/2 - th/2) + "px");
+    })
+    .on("mouseleave touchend", () => {
+      hl.style("display","none"); dots.style("display","none"); tip.attr("hidden","");
+    });
+
+  reportHeight();
+}
+
+/* ---- table view: the active indicator, with the difference and any extra measure ---- */
+function buildTable(){
+  const ex = P.extra ? DATA.panels[P.key].extra : null;
+  const head = `<tr><th>Year</th>${SERIES.map(s=>`<th>${s.name}${P.shortUnit ? ` (${P.shortUnit})` : ""}</th>`).join("")}<th>Difference</th>` +
+    (ex ? SERIES.map(s=>`<th>${s.name} (${P.extra.name.toLowerCase()})</th>`).join("") : "") + "</tr>";
+  const body = years.map((yr,i) =>
+    `<tr><td>${yr}</td>${SERIES.map(s=>`<td>${fmt(vals(s.name)[i])}</td>`).join("")}<td>${fmtDiff(diffAt(i))}</td>` +
+    (ex ? SERIES.map(s=>`<td>${fmtExtra(ex[s.name][i])}</td>`).join("") : "") + "</tr>"
+  ).join("");
+  document.getElementById("tableview").innerHTML =
+    `<table><caption class="sr-only">${CONFIG.title}: ${P.tab}</caption><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place, and exactly the plot's box — the bar
+   template's fix. A table shorter than the chart would otherwise shrink the
+   figure and leave a hole in the article under the fixed-height iframe. */
+btn.addEventListener("click", () => {
+  const showTable = tv.hasAttribute("hidden");
+  tv.style.maxHeight = CONFIG.height + "px";
+  tv.style.height    = CONFIG.height + "px";
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
+  reportHeight();
+});
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x, using the
+   page's loaded webfonts (an SVG data URL would lose them).
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const op = parseFloat(cs.opacity);
+  if (!isNaN(op) && op < 1) ctx.globalAlpha *= op;
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) { const m = /translate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?/.exec(tf); if (m) ctx.translate(+m[1], +(m[2] || 0)); }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.stroke(path); ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
+                 num("x"), num("y") + dy);
+    ctx.textAlign = "left";
+  }
+  for (const child of el.children){
+    if ((child.tagName||"").toLowerCase() !== "title") paintSvgNode(ctx, child);
+  }
+  ctx.restore();
+}
+
+async function exportPNG(){
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const CW = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  /* the PNG has no tabs, so the indicator goes into the title */
+  const titleText = `${titleEl.textContent}: ${P.tab}`;
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleText, CW);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(CW, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, CW);
+
+  const totalH = PAD + tLines.length*tLh + 5 + sLines.length*sLh + 14 + SH + 14 + rLines.length*rLh + PAD;
+  const c = document.createElement("canvas");
+  c.width = Math.round(CW * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, CW, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(CW, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (titleText || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+document.getElementById("download").addEventListener("click", () => { exportPNG(); });
+
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+/* The toggle is sized to its longer label. Otherwise "Show chart" is wider
+   than "Show data", the source line beside it wraps once more at narrow
+   widths, and the figure grows by a line inside the fixed iframe. */
+function pinToggleWidth(){
+  const t = document.getElementById("toggle"), label = t.textContent;
+  t.style.minWidth = "";
+  t.textContent = "Show chart"; const a = t.offsetWidth;
+  t.textContent = "Show data";  const b = t.offsetWidth;
+  t.textContent = label; t.style.minWidth = Math.ceil(Math.max(a, b)) + "px";
+}
+pinToggleWidth();
+document.fonts.ready.then(() => { pinToggleWidth(); render(); });
+
+buildTable();
+render();
+let lastW = W;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w && w !== lastW) { lastW = w; render(); }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>

@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ethiopia’s urban transition under the DEGURBA classification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* ============================================================
+   AFI chart — custom form on the bar/column template shell
+   Design tokens are the agreed AFI system. Do not hand-edit
+   colours here; change them in one place and rebuild.
+
+   Same shell as the line template: same tokens, same footer,
+   same table view, same PNG export, same height contract.
+   ============================================================ */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:balance}
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.zeroline{stroke:var(--label); stroke-width:1; shape-rendering:crispEdges}
+.bar{shape-rendering:crispEdges}
+.bar.dim{opacity:.28}                /* non-highlighted bars, when highlight is in use */
+.vlabel{font-size:12px; font-weight:500}
+.vlabel.inside{fill:var(--surface)}
+.seglabel{font-size:11.5px; font-weight:500}   /* fill set per segment, from its luminance */
+.totlabel{font-size:12px; font-weight:600; fill:var(--ink)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+/* band marking a threshold region on the value axis */
+.vband{fill:var(--panel)}
+.vbandline{stroke:var(--grid); stroke-width:1; stroke-dasharray:4 3}
+.vbandlabel{font-size:11px; fill:var(--muted)}
+.vbandtick{font-size:12px; fill:var(--muted)}
+/* reference line (an average, a target) — dashed, house rule */
+.refline{stroke:var(--label); stroke-width:1.5; stroke-dasharray:6 4}
+.reflabel{font-size:11px; fill:var(--label)}
+/* overlaid line on a second axis */
+.overlay{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.overlaydot{stroke:var(--surface); stroke-width:1.5}
+.legend text{font-size:11.5px; fill:var(--label)}
+.hoverband{fill:var(--ink); opacity:.05}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip tr.tot td{border-top:1px solid var(--grid); padding-top:4px; font-weight:600}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* max-height set from the SVG height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- custom forms: heatmap, dumbbell, population line ---- */
+.cell{shape-rendering:crispEdges}
+.cell.on{stroke:var(--ink); stroke-width:2}
+.cellbg{fill:var(--panel)}
+.block{shape-rendering:crispEdges}
+.celllabel{font-size:12px; font-weight:500}
+.legtick{font-size:11px; fill:var(--label)}
+.popline{fill:none; stroke:#172859; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.mark,.dot,.hoverdot{stroke:var(--surface); stroke-width:1.5}
+.mark{fill:#172859}
+.marklabel{font-size:12px; font-weight:500; fill:var(--ink)}
+.hoverline{stroke:var(--label); stroke-width:1; stroke-dasharray:3 3}
+.dbar{stroke:var(--muted); stroke-width:2; opacity:.55}
+.dlabel{font-size:11.5px; font-weight:500; fill:var(--label)}
+.tip .dotsw{border-radius:50%}
+.tip tr.det td{color:var(--label); font-size:12px}
+.tcap{font-size:12px; color:var(--label); margin:12px 10px 4px}
+.tcap:first-child{margin-top:0}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   ============================================================ */
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   Heatmap + line: a category × year grid of shares beside the
+   total those shares are of. One SVG, two panels.
+   ============================================================ */
+const CONFIG = {
+  "title": "Ethiopia’s urban transition under the DEGURBA classification",
+  "subtitle": "Share of the population by degree of urbanisation, beside the total population. Dots mark the years in the grid.",
+  "source": "World Urbanisation Prospects (total population) and author calculations using data from GHSL–WUP country statistics R2025A V1.0 (DEGURBA classification)",
+  "sourceUrl": null,
+  "catTitle": "Degree of urbanisation",
+  "heatTitle": "Share of population",
+  "lineTitle": "Total population, millions",
+  "heatMax": 40,
+  "shareDecimals": 1,
+  "forecastFrom": 2050,
+  "lineForecastFrom": 2026,
+  "xPad": 2,
+  "stackBelow": 600,
+  "heatShare": 0.58,
+  "heightSide": 440,
+  "heatStackedH": 262,
+  "heightStacked": 450,
+  "cellMode": "fill"
+};
+
+const DATA = {"years": [1975, 2000, 2025, 2050], "classes": ["Urban centre", "Dense urban cluster", "Semi-dense urban cluster", "Suburban/peri-urban", "Rural cluster/Village", "Low-density rural", "Very-low-density rural"], "share": {"Urban centre": [14.555167365740543, 20.252922595181026, 25.929770182954204, 37.36079644978074], "Dense urban cluster": [29.44037634530023, 20.75900711252472, 15.100006121226897, 14.873777053699008], "Semi-dense urban cluster": [0.9846103195255279, 1.8006564210568077, 4.108937855554965, 4.685053205080739], "Suburban/peri-urban": [3.791467280524212, 10.413687080387207, 21.65664722008276, 19.383422220928463], "Rural cluster/Village": [7.7706459852323855, 10.516905006845167, 8.38681021621442, 5.208111222671872], "Low-density rural": [27.20800133156194, 29.943615038214816, 21.189501954172115, 16.364872028177437], "Very-low-density rural": [16.249731372115154, 6.313206745790268, 3.6283264497946313, 2.1239678196617375]}, "popYears": [1960, 1961, 1962, 1963, 1964, 1965, 1966, 1967, 1968, 1969, 1970, 1971, 1972, 1973, 1974, 1975, 1976, 1977, 1978, 1979, 1980, 1981, 1982, 1983, 1984, 1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038, 2039, 2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047, 2048, 2049, 2050], "pop": [21.376693, 21.906102, 22.465126, 23.051637, 23.666548, 24.310612000000003, 24.952689, 25.620276, 26.33793, 27.072571, 27.829128, 28.600106, 29.374608, 30.166785, 30.957273, 31.723252, 32.534418, 33.167272, 33.734592, 34.238652, 34.428514, 35.304012, 36.70129, 37.740817, 38.735722, 39.842135999999996, 41.037656000000005, 42.46004, 44.150826, 45.879690000000004, 47.609755, 49.717197999999996, 51.853747000000006, 53.708891, 55.611508, 57.537335, 59.467635, 61.404539, 63.363524, 65.374561, 67.411494, 69.487762, 71.63551700000001, 73.832663, 76.077206, 78.36747, 80.70349, 83.103218, 85.54366800000001, 88.007636, 90.53851399999999, 93.14997, 95.79876700000001, 98.43875100000001, 101.11561, 103.86713400000001, 106.71816199999999, 109.666481, 112.664152, 115.73738300000001, 118.917671, 122.138588, 125.384287, 128.691692, 132.059767, 135.472051, 138.902185, 142.36479699999998, 145.841262, 149.336062, 152.855357, 156.382428, 159.923899, 163.453316, 166.978794, 170.532954, 174.09777499999998, 177.661138, 181.235896, 184.835111, 188.450902, 192.06863, 195.695304, 199.347986, 203.014371, 206.673639, 210.337848, 214.023508, 217.71020499999997, 221.377337, 225.021874]};
+
+/* ============================================================
+   AFI design system — shared by every chart type.
+   ============================================================ */
+const RAMP = ["#172859","#e67500","#004ea2","#389d63","#892e88","#e79f2b","#9e234f","#5791cd"];
+const INK="#172859", LABEL="#58585a", MUTED="#7d8899", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff";
+/* Sequential ramp: the ISS blue ramp from the conventions doc (section 10),
+   light → dark, interpolated in Lab so the steps stay perceptually even. */
+const SEQ = ["#98b6e0","#739acf","#4d7dbe","#2560ac","#0b458b"];
+const heatColor = d3.scaleLinear()
+  .domain(SEQ.map((_, i) => i * CONFIG.heatMax / (SEQ.length - 1)))
+  .range(SEQ).interpolate(d3.interpolateLab).clamp(true);
+const fmtShare = v => v == null ? "—" : d3.format(`.${CONFIG.shareDecimals}f`)(v) + "%";
+const fmtPop   = v => v == null ? "—" : d3.format(",.1f")(v) + "m";
+const fmtPopAxis = v => d3.format(",.0f")(v) + "m";
+const popAt = y => DATA.pop[DATA.popYears.indexOf(y)];
+const isFc = y => CONFIG.forecastFrom != null && y >= CONFIG.forecastFrom;
+const isLineFc = y => CONFIG.lineForecastFrom != null && y >= CONFIG.lineForecastFrom;
+
+
+/* ---- scaffolding ---- */
+document.getElementById("title").textContent = CONFIG.title;
+document.getElementById("subtitle").textContent = CONFIG.subtitle;
+document.getElementById("source").innerHTML =
+  "Source: " + (CONFIG.sourceUrl
+    ? `<a href="${CONFIG.sourceUrl}" target="_blank" rel="noopener">${CONFIG.source}</a>`
+    : CONFIG.source);
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+let W = 0;
+
+/* text measurement, shared */
+function probeCtx(){
+  return probeCtx._c || (probeCtx._c = document.createElement("canvas").getContext("2d"));
+}
+function textW(str, font){ const c = probeCtx(); c.font = font; return c.measureText(String(str)).width; }
+/* Greedy word wrap to at most `maxLines`; anything that still will not fit is
+   folded into the last line and ellipsised, so a long name degrades rather
+   than overflowing into its neighbour. */
+function wrapLabel(str, maxW, font, maxLines){
+  const words = String(str).split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words){
+    const t = line ? line + " " + w : w;
+    if (line && textW(t, font) > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines){
+    /* the kept lines need trimming too: a single word longer than the band —
+       "Democratic" — went through untouched and overlapped its neighbour */
+    const head = lines.slice(0, maxLines - 1).map(l => ellipsis(l, font, maxW));
+    head.push(ellipsis(lines.slice(maxLines - 1).join(" "), font, maxW));
+    return head;
+  }
+  return lines.map(l => ellipsis(l, font, maxW));   // a single long word
+}
+
+function ellipsis(str, font, maxW){
+  if (textW(str, font) <= maxW) return String(str);
+  let s = String(str);
+  while (s.length > 1 && textW(s + "…", font) > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+/* white text on a dark bar, ink on a light one */
+function readableOn(hex){
+  const n = parseInt(hex.slice(1), 16);
+  const lin = c => { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const L = 0.2126*lin(n>>16 & 255) + 0.7152*lin(n>>8 & 255) + 0.0722*lin(n & 255);
+  return L > 0.45 ? INK : SURFACE;
+}
+
+function placeTip(ev, H){
+  const [mx, my] = d3.pointer(ev, svg.node());
+  const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+  tip.style("left", (mx + 16 + tw > W ? Math.max(4, mx - 16 - tw) : mx + 16) + "px")
+     .style("top",  Math.min(H - th - 4, Math.max(4, my - th/2)) + "px");
+}
+
+function render(){
+  const node = document.querySelector(".afi");
+  W = node.clientWidth || 780;
+  /* Side by side where both panels have room; stacked below that. Each
+     layout has one fixed height, so the figure never depends on the data. */
+  const stacked = W < CONFIG.stackBelow;
+  const H = stacked ? CONFIG.heightStacked : CONFIG.heightSide;
+  const bodyFont = getComputedStyle(document.body).fontFamily;
+  const tickFont = `400 12px ${bodyFont}`, cellFont = `500 12px ${bodyFont}`;
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
+  tip.attr("hidden", "");
+
+  const GAP = 36, TITLE_H = 20, FC_H = 14, HEAD_H = 20, LEG_H = 34;
+  let heat, line;
+  if (!stacked){
+    const hw = Math.round((W - GAP) * CONFIG.heatShare);
+    heat = {x: 0, y: 0, w: hw, h: H};
+    line = {x: hw + GAP, y: 0, w: W - hw - GAP, h: H};
+  } else {
+    heat = {x: 0, y: 0, w: W, h: CONFIG.heatStackedH};
+    line = {x: 0, y: CONFIG.heatStackedH + 22, w: W, h: H - CONFIG.heatStackedH - 22};
+  }
+
+  /* ================= heatmap ================= */
+  svg.append("text").attr("class","ytitle").attr("x", heat.x).attr("y", heat.y + 13)
+     .text(ellipsis(CONFIG.heatTitle, tickFont, heat.w));
+  const gridTop = heat.y + TITLE_H + FC_H + HEAD_H;
+  const gridBot = heat.y + heat.h - LEG_H;
+  const widestCls = Math.max(...DATA.classes.map(c => textW(c, tickFont)));
+  const labW = Math.min(Math.ceil(widestCls) + 12, Math.round(heat.w * 0.46));
+  const col = d3.scaleBand().domain(DATA.years).range([heat.x + labW, heat.x + heat.w]).paddingInner(0.06);
+  const row = d3.scaleBand().domain(DATA.classes).range([gridTop, gridBot]).paddingInner(0.08);
+
+  /* row labels wrap onto two lines rather than being cut */
+  const rl = svg.append("g").attr("class","axis");
+  DATA.classes.forEach(c => {
+    const lines = wrapLabel(c, labW - 12, tickFont, 2);
+    const t = rl.append("text").attr("x", heat.x + labW - 10)
+      .attr("y", row(c) + row.bandwidth()/2).attr("dy","0.32em").attr("text-anchor","end");
+    lines.forEach((ln, i) => t.append("tspan").attr("x", heat.x + labW - 10)
+      .attr("dy", i ? "14px" : (lines.length > 1 ? "-7px" : null)).text(ln));
+    t.append("title").text(c);
+  });
+
+  /* column heads */
+  svg.append("g").attr("class","axis").selectAll("text").data(DATA.years).join("text")
+    .attr("x", y => col(y) + col.bandwidth()/2).attr("y", gridTop - 7)
+    .attr("text-anchor","middle").text(y => y);
+
+  /* forecast boundary, in its own strip above the column heads */
+  if (CONFIG.forecastFrom != null && DATA.years.includes(CONFIG.forecastFrom)){
+    const bx = col(CONFIG.forecastFrom) - col.step() * col.paddingInner() / 2;
+    svg.append("line").attr("class","fcline")
+      .attr("x1", bx).attr("x2", bx).attr("y1", heat.y + TITLE_H + 2).attr("y2", gridBot);
+    const room = heat.x + heat.w - (bx + 5);
+    const lbl = ["Forecast →", "Forecast"].find(s => textW(s, `400 11px ${bodyFont}`) <= room);
+    if (lbl) svg.append("text").attr("class","fclabel")
+      .attr("x", bx + 5).attr("y", heat.y + TITLE_H + 11).text(lbl);
+  }
+
+  const cells = [];
+  DATA.classes.forEach(c => DATA.years.forEach((y, j) => cells.push({c, y, j, v: DATA.share[c][j]})));
+  /* Two cell modes.
+     "fill": every cell is filled and colour alone carries the share.
+     "area": each cell is a pale slot, and the block inside it has an area
+     proportional to the share (a full slot = heatMax). Blocks grow outward
+     from the centre of their slot, filling it as the value rises, so size
+     and colour both carry the value and rows still line up with labels. */
+  const sized = CONFIG.cellMode === "area";
+  const cw = col.bandwidth(), ch = row.bandwidth();
+  const geom = d => {
+    const k = sized ? Math.sqrt(Math.min(d.v, CONFIG.heatMax) / CONFIG.heatMax) : 1;
+    const w = cw * k, h = ch * k;
+    return {x: col(d.y) + (cw - w) / 2, y: row(d.c) + (ch - h) / 2, w, h};
+  };
+  const cg = svg.append("g");
+  const slots = sized
+    ? cg.selectAll("rect.cellbg").data(cells).join("rect").attr("class","cell cellbg")
+        .attr("x", d => col(d.y)).attr("y", d => row(d.c)).attr("width", cw).attr("height", ch)
+    : null;
+  const blocks = cg.selectAll("rect.block").data(cells).join("rect")
+    .attr("class", sized ? "block" : "cell block")
+    .attr("x", d => geom(d).x).attr("y", d => geom(d).y)
+    .attr("width", d => geom(d).w).attr("height", d => geom(d).h)
+    .attr("fill", d => heatColor(d.v));
+  if (sized) blocks.style("pointer-events","none");
+
+  /* Labels. Fill mode: one fit test for the whole grid, all or none. Area
+     mode: per cell, inside the block only; a block too small for its label
+     goes unlabelled (the tooltip and table carry every value). */
+  const gridFits = cw >= textW("00.0%", cellFont) + 8 && ch >= 15;
+  const place = d => {
+    const g = geom(d), tw = textW(fmtShare(d.v), cellFont), cy = row(d.c) + ch / 2;
+    if (!sized) return gridFits
+      ? {x: g.x + g.w / 2, y: cy, anchor: "middle", fill: readableOn(d3.rgb(heatColor(d.v)).formatHex())} : null;
+    if (g.w >= tw + 8 && g.h >= 15)
+      return {x: g.x + g.w / 2, y: cy, anchor: "middle", fill: readableOn(d3.rgb(heatColor(d.v)).formatHex())};
+    return null;
+  };
+  const labelled = cells.map(d => ({d, p: place(d)})).filter(o => o.p);
+  cg.selectAll("text").data(labelled).join("text").attr("class","celllabel")
+    .attr("x", o => o.p.x).attr("y", o => o.p.y).attr("dy","0.34em")
+    .attr("text-anchor", o => o.p.anchor).attr("fill", o => o.p.fill)
+    .style("pointer-events","none").text(o => fmtShare(o.d.v));
+
+  const targets = sized ? slots : blocks;
+  targets.on("mousemove touchmove", function(ev, d){
+      targets.classed("on", false); d3.select(this).classed("on", true);
+      const people = d.v * popAt(d.y) / 100;
+      tip.attr("hidden", null).html(`<h4>${d.c}</h4><table>
+        <tr><td>${d.y}${isFc(d.y) ? " · forecast" : ""}</td><td class="v">${fmtShare(d.v)}</td></tr>
+        <tr><td>People</td><td class="v">${fmtPop(people)}</td></tr></table>`);
+      placeTip(ev, H);
+    })
+    .on("mouseleave touchend", () => { targets.classed("on", false); tip.attr("hidden",""); });
+
+  /* legend: a stepped bar rather than a gradient, so the PNG export draws it */
+  const lx = heat.x + labW, lw = Math.min(220, heat.x + heat.w - lx), ly = gridBot + 10;
+  const lg = svg.append("g");
+  const N = 44;
+  d3.range(N).forEach(i => lg.append("rect")
+    .attr("x", lx + i * lw / N).attr("y", ly).attr("width", lw / N + 0.6).attr("height", 8)
+    .attr("fill", heatColor(i / (N - 1) * CONFIG.heatMax)));
+  const lt = d3.scaleLinear().domain([0, CONFIG.heatMax]).range([lx, lx + lw]);
+  const legTicks = lw >= 150 ? d3.range(0, CONFIG.heatMax + 1, 10) : [0, CONFIG.heatMax];
+  lg.selectAll("text").data(legTicks).join("text").attr("class","legtick")
+    .attr("x", t => lt(t)).attr("y", ly + 22)
+    .attr("text-anchor", (t, i) => i === 0 ? "start" : i === legTicks.length - 1 ? "end" : "middle")
+    .text(t => t + "%");
+  /* area mode: say what a full slot means, beside the key, where it fits */
+  if (sized){
+    const note = `Full cell = ${CONFIG.heatMax}%`, nx = lx + lw + 14;
+    if (nx + textW(note, `400 11px ${bodyFont}`) <= heat.x + heat.w)
+      lg.append("text").attr("class","legtick").attr("x", nx).attr("y", ly + 8).text(note);
+  }
+
+  /* ================= total population line ================= */
+  svg.append("text").attr("class","ytitle").attr("x", line.x).attr("y", line.y + 13)
+     .text(ellipsis(CONFIG.lineTitle, tickFont, line.w));
+  const pTop = stacked ? line.y + TITLE_H + 12 : gridTop;
+  const pBot = stacked ? line.y + line.h - 24 : gridBot;
+  const yv = d3.scaleLinear().domain([0, d3.max(DATA.pop)]);
+  const nY = Math.max(2, Math.min(5, Math.floor((pBot - pTop) / 34)));
+  yv.nice(nY);
+  const yTicks = yv.ticks(nY);
+  const tickW = Math.max(...yTicks.map(t => textW(fmtPopAxis(t), tickFont)));
+  const pL = line.x + Math.ceil(tickW) + 10, pR = line.x + line.w - 5;
+  yv.range([pBot, pTop]);
+  const first = DATA.popYears[0], last = DATA.popYears[DATA.popYears.length - 1];
+  const xv = d3.scaleLinear().domain([first - CONFIG.xPad, last]).range([pL, pR]);
+
+  const lgrid = svg.append("g").attr("class","grid");
+  lgrid.selectAll("line").data(yTicks).join("line")
+    .attr("x1", pL).attr("x2", pR).attr("y1", t => yv(t)).attr("y2", t => yv(t));
+  svg.append("g").attr("class","axis").selectAll("text").data(yTicks).join("text")
+    .attr("x", pL - 8).attr("y", t => yv(t)).attr("dy","0.32em").attr("text-anchor","end")
+    .text(fmtPopAxis);
+  /* the first year is always labelled; the step follows the room */
+  const pxYr = (pR - pL) / (last - first + CONFIG.xPad);
+  const stepX = pxYr * 10 >= 44 ? 10 : 20;
+  const xt = d3.range(first, last + 1, stepX);
+  /* the last year is always labelled too: added if there is room, otherwise
+     it replaces the tick before it (2050 rather than 2040) */
+  if (!xt.includes(last)){
+    if ((last - xt[xt.length - 1]) * pxYr >= 40) xt.push(last);
+    else xt[xt.length - 1] = last;
+  }
+  /* a centred label that would cross the plot's edge is anchored to it instead */
+  const half = textW("0000", tickFont) / 2;
+  svg.append("g").attr("class","axis").selectAll("text").data(xt).join("text")
+    .attr("x", t => xv(t) - half < pL - 2 ? pL - 2 : xv(t) + half > pR + 5 ? pR + 5 : xv(t))
+    .attr("text-anchor", t => xv(t) - half < pL - 2 ? "start" : xv(t) + half > pR + 5 ? "end" : "middle")
+    .attr("y", pBot + 18).text(t => t);
+
+  if (CONFIG.lineForecastFrom != null){
+    const fx = xv(CONFIG.lineForecastFrom);
+    svg.append("line").attr("class","fcline").attr("x1", fx).attr("x2", fx).attr("y1", pTop).attr("y2", pBot);
+    /* same fit rule as the heatmap's forecast label */
+    const lbl = ["Forecast →", "Forecast"].find(t => textW(t, `400 11px ${bodyFont}`) <= pR + 4 - (fx + 5));
+    if (lbl) svg.append("text").attr("class","fclabel").attr("x", fx + 5).attr("y", pBot - 6).text(lbl);
+  }
+
+  svg.append("path").attr("class","popline")
+    .attr("d", d3.line().x((_, i) => xv(DATA.popYears[i])).y(v => yv(v))(DATA.pop));
+
+  /* dots mark the heatmap's years; each label is fit-tested and dropped
+     rather than allowed to collide */
+  const labelFont = `500 12px ${bodyFont}`;
+  const placed = [];
+  DATA.years.forEach(y => {
+    const v = popAt(y), cx = xv(y), cy = yv(v), txt = fmtPop(v), w = textW(txt, labelFont);
+    svg.append("circle").attr("class","mark").attr("r", 4).attr("cx", cx).attr("cy", cy);
+    /* above-left sits clear of a rising curve; below-right is the fallback */
+    const opts = [
+      {x: cx - 7, y: cy - 7, anchor: "end",   box: [cx - 7 - w, cy - 19, cx - 7, cy - 5]},
+      {x: cx + 7, y: cy + 16, anchor: "start", box: [cx + 7, cy + 4, cx + 7 + w, cy + 18]},
+    ];
+    const ok = opts.find(o => o.box[0] >= pL && o.box[2] <= pR + 4 && o.box[1] >= pTop - 14 && o.box[3] <= pBot
+      && !placed.some(p => o.box[0] < p[2] && p[0] < o.box[2] && o.box[1] < p[3] && p[1] < o.box[3]));
+    if (ok){
+      placed.push(ok.box);
+      svg.append("text").attr("class","marklabel").attr("x", ok.x).attr("y", ok.y)
+        .attr("text-anchor", ok.anchor).text(txt);
+    }
+  });
+
+  const hl = svg.append("line").attr("class","hoverline").attr("y1", pTop).attr("y2", pBot).style("display","none");
+  const hd = svg.append("circle").attr("class","hoverdot").attr("r", 4.5).attr("fill", RAMP[0]).style("display","none");
+  svg.append("rect").attr("x", pL).attr("y", pTop).attr("width", pR - pL).attr("height", pBot - pTop)
+    .attr("fill","none").style("pointer-events","all")
+    .on("mousemove touchmove", ev => {
+      const [mx] = d3.pointer(ev, svg.node());
+      const yr = Math.max(first, Math.min(last, Math.round(xv.invert(mx))));
+      const v = popAt(yr);
+      hl.style("display", null).attr("x1", xv(yr)).attr("x2", xv(yr));
+      hd.style("display", null).attr("cx", xv(yr)).attr("cy", yv(v));
+      tip.attr("hidden", null).html(`<h4>${yr}${isLineFc(yr) ? " · forecast" : ""}</h4><table>
+        <tr><td><span class="sw" style="background:${RAMP[0]}"></span>Total population</td><td class="v">${fmtPop(v)}</td></tr></table>`);
+      placeTip(ev, H);
+    })
+    .on("mouseleave touchend", () => { hl.style("display","none"); hd.style("display","none"); tip.attr("hidden",""); });
+
+  render._H = H;
+  reportHeight();
+}
+
+
+/* ---- table view: the accessibility relief channel, and the honest fallback ---- */
+function buildTable(){
+  const head1 = `<tr><th>${CONFIG.catTitle}</th>${DATA.years.map(y => `<th>${y}${isFc(y) ? " (forecast)" : ""}</th>`).join("")}</tr>`;
+  const body1 = DATA.classes.map(c => `<tr><td>${c}</td>${DATA.share[c].map((v, j) =>
+      `<td>${fmtShare(v)} · ${fmtPop(v * popAt(DATA.years[j]) / 100)}</td>`).join("")}</tr>`).join("");
+  const head2 = `<tr><th>Year</th><th>Total population</th></tr>`;
+  const body2 = DATA.popYears.map((y, i) => `<tr><td>${y}${isLineFc(y) ? " (forecast)" : ""}</td><td>${fmtPop(DATA.pop[i])}</td></tr>`).join("");
+  document.getElementById("tableview").innerHTML =
+    `<p class="tcap">${CONFIG.heatTitle} · people</p>` +
+    `<table><caption class="sr-only">${CONFIG.heatTitle}</caption><thead>${head1}</thead><tbody>${body1}</tbody></table>` +
+    `<p class="tcap">${CONFIG.lineTitle}</p>` +
+    `<table><caption class="sr-only">${CONFIG.lineTitle}</caption><thead>${head2}</thead><tbody>${body2}</tbody></table>`;
+}
+
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place rather than stacking below it. Inside a
+   fixed-height iframe there is no room to grow, so a stacked table is simply
+   clipped — swapping keeps everything visible at one iframe height. */
+btn.addEventListener("click", () => {
+  const showTable = tv.hasAttribute("hidden");
+  /* Height-neutral swap: the table takes exactly the plot's box, whether the
+     rows overflow it (scroll) or fall short of it (whitespace). A table that
+     is shorter than the chart would otherwise shrink the whole figure, and
+     the iframe is a fixed box — the gap shows up as a hole in the article. */
+  const boxH = (render._H || CONFIG.height) + "px";
+  tv.style.maxHeight = boxH;
+  tv.style.height    = boxH;
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
+  reportHeight();
+});
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x.
+
+   The chart is not rasterised via an SVG data URL, because an SVG
+   loaded that way renders in an isolated context with no access to
+   the page's webfonts, so every label would silently fall back to a
+   system face. Redrawing through the Canvas 2D API uses the fonts
+   already loaded here, so the PNG matches what is on screen.
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const op = parseFloat(cs.opacity);
+  if (!isNaN(op) && op < 1) ctx.globalAlpha *= op;
+
+  /* translate then rotate, in the order SVG applies them */
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) {
+    const mt = /translate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?/.exec(tf);
+    if (mt) ctx.translate(+mt[1], +(mt[2] || 0));
+    const mr = /rotate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+)[\s,]+([-\d.]+))?\s*\)/.exec(tf);
+    if (mr) {
+      const a = +mr[1] * Math.PI / 180;
+      if (mr[2] != null) { ctx.translate(+mr[2], +mr[3]); ctx.rotate(a); ctx.translate(-mr[2], -mr[3]); }
+      else ctx.rotate(a);
+    }
+  }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.stroke(path);
+        ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    const dxAttr = el.getAttribute("dx");
+    const dx = dxAttr ? (/em$/.test(dxAttr) ? parseFloat(dxAttr) * fs : parseFloat(dxAttr)) : 0;
+    /* Wrapped category labels are tspans, each carrying its own dy. Drawing
+       el.textContent would run every line together on one baseline. */
+    const spans = el.querySelectorAll(":scope > tspan");
+    if (spans.length){
+      let ty = num("y") + dy;
+      spans.forEach(ts => {
+        const tdy = ts.getAttribute("dy");
+        if (tdy) ty += /em$/.test(tdy) ? parseFloat(tdy) * fs : parseFloat(tdy);
+        const tx = ts.getAttribute("x") != null ? parseFloat(ts.getAttribute("x")) : num("x");
+        ctx.fillText(ts.textContent, tx + dx, ty);
+      });
+    } else {
+      /* a <title> child is a tooltip, not drawn text */
+      ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
+                   num("x") + dx, num("y") + dy);
+    }
+    ctx.textAlign = "left";
+  }
+
+  for (const child of el.children){
+    const t = (child.tagName||"").toLowerCase();
+    if (t !== "title" && t !== "tspan") paintSvgNode(ctx, child);   /* both handled above */
+  }
+  ctx.restore();
+}
+
+async function exportPNG(){
+  /* the table view hides the chart — switch back before drawing */
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const CW = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleEl.textContent, CW);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(CW, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, CW);
+
+  const titleH = tLines.length * tLh, subH = sLines.length * sLh, srcH = rLines.length * rLh;
+  const totalH = PAD + titleH + 5 + subH + 14 + SH + 14 + srcH + PAD;
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(CW * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, CW, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(CW, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (CONFIG.title || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+
+document.getElementById("download").addEventListener("click", () => { exportPNG(); });
+
+/* ---- tell the parent page how tall we are (works if the CMS ever adds a resizer) ---- */
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+/* The toggle is sized to its longer label. Otherwise "Show chart" is wider
+   than "Show data", the source line beside it wraps once more at narrow
+   widths, and the figure grows by a line inside the fixed iframe. */
+function pinToggleWidth(){
+  const t = document.getElementById("toggle"), label = t.textContent;
+  t.style.minWidth = "";
+  t.textContent = "Show chart"; const a = t.offsetWidth;
+  t.textContent = "Show data";  const b = t.offsetWidth;
+  t.textContent = label; t.style.minWidth = Math.ceil(Math.max(a, b)) + "px";
+}
+pinToggleWidth();
+document.fonts.ready.then(() => { pinToggleWidth(); render(); });
+
+buildTable();
+render();
+/* Re-render on width change only. Observing .wrap and re-rendering on any
+   size change would loop, because render() sets the svg height, which
+   resizes .wrap, which fires the observer again. */
+let lastW = W;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w && w !== lastW) { lastW = w; render(); }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>

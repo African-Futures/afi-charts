@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Built-up area per person in Ethiopia’s 15 largest urban centres, 2025–2050</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+/* ============================================================
+   AFI chart — custom form on the bar/column template shell
+   Design tokens are the agreed AFI system. Do not hand-edit
+   colours here; change them in one place and rebuild.
+
+   Same shell as the line template: same tokens, same footer,
+   same table view, same PNG export, same height contract.
+   ============================================================ */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:balance}
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.zeroline{stroke:var(--label); stroke-width:1; shape-rendering:crispEdges}
+.bar{shape-rendering:crispEdges}
+.bar.dim{opacity:.28}                /* non-highlighted bars, when highlight is in use */
+.vlabel{font-size:12px; font-weight:500}
+.vlabel.inside{fill:var(--surface)}
+.seglabel{font-size:11.5px; font-weight:500}   /* fill set per segment, from its luminance */
+.totlabel{font-size:12px; font-weight:600; fill:var(--ink)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+/* band marking a threshold region on the value axis */
+.vband{fill:var(--panel)}
+.vbandline{stroke:var(--grid); stroke-width:1; stroke-dasharray:4 3}
+.vbandlabel{font-size:11px; fill:var(--muted)}
+.vbandtick{font-size:12px; fill:var(--muted)}
+/* reference line (an average, a target) — dashed, house rule */
+.refline{stroke:var(--label); stroke-width:1.5; stroke-dasharray:6 4}
+.reflabel{font-size:11px; fill:var(--label)}
+/* overlaid line on a second axis */
+.overlay{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.overlaydot{stroke:var(--surface); stroke-width:1.5}
+.legend text{font-size:11.5px; fill:var(--label)}
+.hoverband{fill:var(--ink); opacity:.05}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip tr.tot td{border-top:1px solid var(--grid); padding-top:4px; font-weight:600}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* max-height set from the SVG height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- custom forms: heatmap, dumbbell, population line ---- */
+.cell{shape-rendering:crispEdges}
+.cell.on{stroke:var(--ink); stroke-width:2}
+.cellbg{fill:var(--panel)}
+.block{shape-rendering:crispEdges}
+.celllabel{font-size:12px; font-weight:500}
+.legtick{font-size:11px; fill:var(--label)}
+.popline{fill:none; stroke:#172859; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.mark,.dot,.hoverdot{stroke:var(--surface); stroke-width:1.5}
+.mark{fill:#172859}
+.marklabel{font-size:12px; font-weight:500; fill:var(--ink)}
+.hoverline{stroke:var(--label); stroke-width:1; stroke-dasharray:3 3}
+.dbar{stroke:var(--muted); stroke-width:2; opacity:.55}
+.dlabel{font-size:11.5px; font-weight:500; fill:var(--label)}
+.tip .dotsw{border-radius:50%}
+.tip tr.det td{color:var(--label); font-size:12px}
+.tcap{font-size:12px; color:var(--label); margin:12px 10px 4px}
+.tcap:first-child{margin-top:0}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   ============================================================ */
+/* ============================================================
+   CONFIG — this is the only block that changes per chart.
+   Dumbbell: one row per category, a dot for each of two values
+   joined by a connector. Two series only, so ramp slots 1 and 2.
+   ============================================================ */
+const CONFIG = {
+  "title": "Built-up area per person in Ethiopia’s 15 largest urban centres, 2025–2050",
+  "subtitle": "Built-up area per resident in square metres, in 2025 and projected for 2050. Sorted by the 2050 value.",
+  "source": "Author calculations using data from GHSL–WUP MTUC R2025A V1.1. Urban centres with plausibility scores below 2 were excluded, then the rest ranked by 2025 population",
+  "sourceUrl": null,
+  "vTitle": "Built-up area per person, m²",
+  "catTitle": "Urban centre",
+  "unit": "m²",
+  "decimals": 1,
+  "sort": "end",
+  "rowHeight": 30
+};
+
+const DATA = {"categories": ["Addis Ababa", "Adama", "Bahir Dar", "Dire Dawa", "Shashamane", "Hawassa", "Bishoftu", "Jijiga", "Gonder", "Dilla", "Jimma", "Dessie", "Mekelle", "Kombolcha", "Harar"], "series": [{"name": "2025"}, {"name": "2050"}], "values": {"2025": [18.9, 28.0, 17.9, 18.2, 23.8, 29.8, 31.4, 22.5, 20.8, 13.6, 27.4, 19.0, 35.3, 17.5, 25.4], "2050": [22.9, 34.3, 26.3, 23.9, 29.5, 34.0, 36.5, 27.7, 30.1, 21.6, 32.7, 28.1, 43.8, 26.2, 45.8]}, "detail": {"columns": ["Population 2025→2050", "Urban-centre area (km²)", "Built-up area (km²)", "Land/population growth ratio"], "rows": {"Addis Ababa": ["6.706m → 10.783m", "489 → 759", "126.5 → 246.7", "1.56"], "Adama": ["0.585m → 0.898m", "66 → 110", "16.4 → 30.8", "1.64"], "Bahir Dar": ["0.499m → 0.693m", "45 → 73", "8.9 → 18.2", "2.67"], "Dire Dawa": ["0.484m → 0.706m", "38 → 68", "8.8 → 16.9", "1.98"], "Shashamane": ["0.453m → 0.739m", "43 → 91", "10.8 → 21.8", "1.62"], "Hawassa": ["0.445m → 0.654m", "62 → 83", "13.2 → 22.2", "1.44"], "Bishoftu": ["0.443m → 0.974m", "70 → 135", "13.9 → 35.6", "1.30"], "Jijiga": ["0.422m → 0.595m", "42 → 59", "9.5 → 16.5", "1.81"], "Gonder": ["0.393m → 0.553m", "50 → 71", "8.2 → 16.6", "2.55"], "Dilla": ["0.361m → 0.964m", "73 → 249", "4.9 → 20.9", "1.94"], "Jimma": ["0.336m → 0.516m", "53 → 78", "9.2 → 16.9", "1.56"], "Dessie": ["0.307m → 0.454m", "28 → 54", "5.8 → 12.8", "2.49"], "Mekelle": ["0.305m → 0.581m", "58 → 117", "10.8 → 25.5", "1.50"], "Kombolcha": ["0.289m → 0.432m", "30 → 50", "5.1 → 11.3", "2.49"], "Harar": ["0.226m → 0.411m", "28 → 87", "5.7 → 18.8", "2.78"]}}};
+
+/* ============================================================
+   AFI design system — shared by every chart type.
+   ============================================================ */
+const RAMP = ["#172859","#e67500","#004ea2","#389d63","#892e88","#e79f2b","#9e234f","#5791cd"];
+const INK="#172859", LABEL="#58585a", MUTED="#7d8899", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff";
+const SERIES = DATA.series.map((s, i) => ({...s, color: RAMP[i]}));
+const U = CONFIG.unit ? " " + CONFIG.unit : "";
+const fmt = v => v == null ? "—" : d3.format(`,.${CONFIG.decimals}f`)(v);
+const fmtChange = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + d3.format(`,.${CONFIG.decimals}f`)(Math.abs(v));
+
+let ROWS;
+function prepare(){
+  const [A, B] = SERIES.map(s => DATA.values[s.name]);
+  ROWS = DATA.categories.map((cat, i) => ({cat, i, a: A[i], b: B[i]}));
+  if (CONFIG.sort === "end")    ROWS.sort((p, q) => q.b - p.b);
+  if (CONFIG.sort === "start")  ROWS.sort((p, q) => q.a - p.a);
+  if (CONFIG.sort === "change") ROWS.sort((p, q) => (q.b - q.a) - (p.b - p.a));
+}
+
+
+/* ---- scaffolding ---- */
+document.getElementById("title").textContent = CONFIG.title;
+document.getElementById("subtitle").textContent = CONFIG.subtitle;
+document.getElementById("source").innerHTML =
+  "Source: " + (CONFIG.sourceUrl
+    ? `<a href="${CONFIG.sourceUrl}" target="_blank" rel="noopener">${CONFIG.source}</a>`
+    : CONFIG.source);
+
+const svg = d3.select("#chart");
+const tip = d3.select("#tip");
+let W = 0;
+
+/* text measurement, shared */
+function probeCtx(){
+  return probeCtx._c || (probeCtx._c = document.createElement("canvas").getContext("2d"));
+}
+function textW(str, font){ const c = probeCtx(); c.font = font; return c.measureText(String(str)).width; }
+/* Greedy word wrap to at most `maxLines`; anything that still will not fit is
+   folded into the last line and ellipsised, so a long name degrades rather
+   than overflowing into its neighbour. */
+function wrapLabel(str, maxW, font, maxLines){
+  const words = String(str).split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words){
+    const t = line ? line + " " + w : w;
+    if (line && textW(t, font) > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines){
+    /* the kept lines need trimming too: a single word longer than the band —
+       "Democratic" — went through untouched and overlapped its neighbour */
+    const head = lines.slice(0, maxLines - 1).map(l => ellipsis(l, font, maxW));
+    head.push(ellipsis(lines.slice(maxLines - 1).join(" "), font, maxW));
+    return head;
+  }
+  return lines.map(l => ellipsis(l, font, maxW));   // a single long word
+}
+
+function ellipsis(str, font, maxW){
+  if (textW(str, font) <= maxW) return String(str);
+  let s = String(str);
+  while (s.length > 1 && textW(s + "…", font) > maxW) s = s.slice(0, -1);
+  return s + "…";
+}
+/* white text on a dark bar, ink on a light one */
+function readableOn(hex){
+  const n = parseInt(hex.slice(1), 16);
+  const lin = c => { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const L = 0.2126*lin(n>>16 & 255) + 0.7152*lin(n>>8 & 255) + 0.0722*lin(n & 255);
+  return L > 0.45 ? INK : SURFACE;
+}
+
+function render(){
+  prepare();
+  const node = document.querySelector(".afi");
+  W = node.clientWidth || 780;
+  const bodyFont = getComputedStyle(document.body).fontFamily;
+  const tickFont = `400 12px ${bodyFont}`, labelFont = `500 11.5px ${bodyFont}`;
+
+  const titleH = 20, legendH = 24;
+  const widestCat = Math.max(...ROWS.map(r => textW(r.cat, tickFont)));
+  const widestVal = Math.max(...ROWS.flatMap(r => [r.a, r.b]).map(v => textW(fmt(v), labelFont)));
+  const M = {
+    top: 4,
+    right: Math.ceil(widestVal) + 14,      // room for the higher value's label
+    bottom: 26,
+    left: Math.min(Math.ceil(widestCat) + 12, Math.round(W * 0.36)),
+  };
+  const rowH = CONFIG.rowHeight;
+  const ih = ROWS.length * rowH;
+  /* one constant height at every width: it depends only on the row count */
+  const H = titleH + legendH + M.top + ih + M.bottom;
+  const iw = Math.max(120, W - M.left - M.right);
+
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("height", H).selectAll("*").remove();
+  tip.attr("hidden", "");
+  svg.append("text").attr("class","ytitle").attr("x", 0).attr("y", 13)
+     .text(ellipsis(CONFIG.vTitle, tickFont, W));
+
+  const lg = svg.append("g").attr("class","legend").attr("transform", `translate(0,${titleH + 12})`);
+  let lx = 0;
+  SERIES.forEach(s => {
+    lg.append("circle").attr("class","dot").attr("cx", lx + 5).attr("cy", 0).attr("r", 5).attr("fill", s.color);
+    lg.append("text").attr("x", lx + 15).attr("dy","0.32em").text(s.name);
+    lx += textW(s.name, `400 11.5px ${bodyFont}`) + 36;
+  });
+
+  const g = svg.append("g").attr("transform", `translate(${M.left},${titleH + legendH + M.top})`);
+  const y = d3.scaleBand().domain(ROWS.map(r => r.cat)).range([0, ih]);
+  /* Zero-based. A dot does not encode length, but these are amounts of land
+     per person, and zero keeps the gaps between cities honest in proportion. */
+  const x = d3.scaleLinear().domain([0, d3.max(ROWS, r => Math.max(r.a, r.b))]).nice().range([0, iw]);
+  const nT = Math.max(3, Math.min(6, Math.floor(iw / 60)));
+  const ticks = x.ticks(nT);
+
+  g.append("g").attr("class","grid").selectAll("line").data(ticks).join("line")
+    .attr("x1", t => x(t)).attr("x2", t => x(t)).attr("y1", 0).attr("y2", ih);
+  g.append("g").attr("class","axis").attr("transform", `translate(0,${ih})`)
+    .call(d3.axisBottom(x).tickValues(ticks).tickFormat(d3.format(",")).tickSize(0).tickPadding(9));
+  const ca = g.append("g").attr("class","axis").call(d3.axisLeft(y).tickSize(0).tickPadding(10));
+  ca.selectAll("text").text(d => ellipsis(d, tickFont, M.left - 12)).append("title").text(d => d);
+
+  const hoverband = g.append("rect").attr("class","hoverband").attr("x", -M.left).attr("width", W)
+    .attr("height", rowH).style("display","none");
+
+  ROWS.forEach(r => {
+    const cy = y(r.cat) + rowH / 2;
+    const xa = x(r.a), xb = x(r.b);
+    g.append("line").attr("class","dbar").attr("x1", xa).attr("x2", xb).attr("y1", cy).attr("y2", cy);
+    g.append("circle").attr("class","dot").attr("cx", xa).attr("cy", cy).attr("r", 5.5).attr("fill", SERIES[0].color);
+    g.append("circle").attr("class","dot").attr("cx", xb).attr("cy", cy).attr("r", 5.5).attr("fill", SERIES[1].color);
+    /* the lower value is labelled on the left, the higher on the right;
+       each is fit-tested against the plot and dropped if it does not fit */
+    const lo = r.a <= r.b ? {v: r.a, px: xa} : {v: r.b, px: xb};
+    const hi = r.a <= r.b ? {v: r.b, px: xb} : {v: r.a, px: xa};
+    const wl = textW(fmt(lo.v), labelFont), wh = textW(fmt(hi.v), labelFont);
+    if (lo.px - 9 - wl >= 0)
+      g.append("text").attr("class","dlabel").attr("x", lo.px - 9).attr("y", cy).attr("dy","0.32em")
+        .attr("text-anchor","end").text(fmt(lo.v));
+    if (hi.px + 9 + wh <= iw + M.right - 2)
+      g.append("text").attr("class","dlabel").attr("x", hi.px + 9).attr("y", cy).attr("dy","0.32em")
+        .text(fmt(hi.v));
+  });
+
+  /* hover: one target per row */
+  g.append("g").selectAll("rect").data(ROWS).join("rect")
+    .attr("x", -M.left).attr("width", W).attr("y", r => y(r.cat)).attr("height", rowH)
+    .attr("fill","none").style("pointer-events","all")
+    .on("mousemove touchmove", function(ev, r){
+      hoverband.style("display", null).attr("y", y(r.cat));
+      const det = DATA.detail && DATA.detail.rows[r.cat]
+        ? DATA.detail.columns.map((c, ci) => `<tr class="det"><td>${c}</td><td class="v">${DATA.detail.rows[r.cat][ci]}</td></tr>`).join("") : "";
+      tip.attr("hidden", null).html(`<h4>${r.cat}</h4><table>
+        ${SERIES.map((s, si) => `<tr><td><span class="sw dotsw" style="background:${s.color}"></span>${s.name}</td><td class="v">${fmt(si ? r.b : r.a)}${U}</td></tr>`).join("")}
+        <tr class="tot"><td>Change</td><td class="v">${fmtChange(r.b - r.a)}${U}</td></tr>${det}</table>`);
+      const [mx, my] = d3.pointer(ev, svg.node());
+      const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+      tip.style("left", (mx + 16 + tw > W ? Math.max(4, mx - 16 - tw) : mx + 16) + "px")
+         .style("top",  Math.min(H - th - 4, Math.max(4, my - th/2)) + "px");
+    })
+    .on("mouseleave touchend", () => { hoverband.style("display","none"); tip.attr("hidden",""); });
+
+  render._H = H;
+  reportHeight();
+}
+
+
+/* ---- table view: the accessibility relief channel, and the honest fallback ---- */
+function buildTable(){
+  prepare();
+  const head = `<tr><th>${CONFIG.catTitle}</th>${SERIES.map(s => `<th>${s.name}${U ? ` (${CONFIG.unit})` : ""}</th>`).join("")}` +
+    `<th>Change${U ? ` (${CONFIG.unit})` : ""}</th>` +
+    (DATA.detail ? DATA.detail.columns.map(c => `<th>${c}</th>`).join("") : "") + "</tr>";
+  const body = ROWS.map(r => `<tr><td>${r.cat}</td><td>${fmt(r.a)}</td><td>${fmt(r.b)}</td><td>${fmtChange(r.b - r.a)}</td>` +
+    (DATA.detail ? DATA.detail.rows[r.cat].map(v => `<td>${v}</td>`).join("") : "") + "</tr>").join("");
+  document.getElementById("tableview").innerHTML =
+    `<table><caption class="sr-only">${CONFIG.title}</caption><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+const btn = document.getElementById("toggle"),
+      tv  = document.getElementById("tableview"),
+      plot = document.querySelector(".wrap");
+/* The table takes the chart's place rather than stacking below it. Inside a
+   fixed-height iframe there is no room to grow, so a stacked table is simply
+   clipped — swapping keeps everything visible at one iframe height. */
+btn.addEventListener("click", () => {
+  const showTable = tv.hasAttribute("hidden");
+  /* Height-neutral swap: the table takes exactly the plot's box, whether the
+     rows overflow it (scroll) or fall short of it (whitespace). A table that
+     is shorter than the chart would otherwise shrink the whole figure, and
+     the iframe is a fixed box — the gap shows up as a hole in the article. */
+  const boxH = (render._H || CONFIG.height) + "px";
+  tv.style.maxHeight = boxH;
+  tv.style.height    = boxH;
+  if (showTable) { tv.removeAttribute("hidden"); plot.setAttribute("hidden",""); }
+  else           { tv.setAttribute("hidden","");  plot.removeAttribute("hidden"); render(); }
+  btn.textContent = showTable ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(showTable));
+  reportHeight();
+});
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x.
+
+   The chart is not rasterised via an SVG data URL, because an SVG
+   loaded that way renders in an isolated context with no access to
+   the page's webfonts, so every label would silently fall back to a
+   system face. Redrawing through the Canvas 2D API uses the fonts
+   already loaded here, so the PNG matches what is on screen.
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const op = parseFloat(cs.opacity);
+  if (!isNaN(op) && op < 1) ctx.globalAlpha *= op;
+
+  /* translate then rotate, in the order SVG applies them */
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) {
+    const mt = /translate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?/.exec(tf);
+    if (mt) ctx.translate(+mt[1], +(mt[2] || 0));
+    const mr = /rotate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+)[\s,]+([-\d.]+))?\s*\)/.exec(tf);
+    if (mr) {
+      const a = +mr[1] * Math.PI / 180;
+      if (mr[2] != null) { ctx.translate(+mr[2], +mr[3]); ctx.rotate(a); ctx.translate(-mr[2], -mr[3]); }
+      else ctx.rotate(a);
+    }
+  }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.stroke(path);
+        ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    const dxAttr = el.getAttribute("dx");
+    const dx = dxAttr ? (/em$/.test(dxAttr) ? parseFloat(dxAttr) * fs : parseFloat(dxAttr)) : 0;
+    /* Wrapped category labels are tspans, each carrying its own dy. Drawing
+       el.textContent would run every line together on one baseline. */
+    const spans = el.querySelectorAll(":scope > tspan");
+    if (spans.length){
+      let ty = num("y") + dy;
+      spans.forEach(ts => {
+        const tdy = ts.getAttribute("dy");
+        if (tdy) ty += /em$/.test(tdy) ? parseFloat(tdy) * fs : parseFloat(tdy);
+        const tx = ts.getAttribute("x") != null ? parseFloat(ts.getAttribute("x")) : num("x");
+        ctx.fillText(ts.textContent, tx + dx, ty);
+      });
+    } else {
+      /* a <title> child is a tooltip, not drawn text */
+      ctx.fillText(Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join(""),
+                   num("x") + dx, num("y") + dy);
+    }
+    ctx.textAlign = "left";
+  }
+
+  for (const child of el.children){
+    const t = (child.tagName||"").toLowerCase();
+    if (t !== "title" && t !== "tspan") paintSvgNode(ctx, child);   /* both handled above */
+  }
+  ctx.restore();
+}
+
+async function exportPNG(){
+  /* the table view hides the chart — switch back before drawing */
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const CW = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleEl.textContent, CW);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(CW, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, CW);
+
+  const titleH = tLines.length * tLh, subH = sLines.length * sLh, srcH = rLines.length * rLh;
+  const totalH = PAD + titleH + 5 + subH + 14 + SH + 14 + srcH + PAD;
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(CW * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, CW, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(CW, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (CONFIG.title || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+
+document.getElementById("download").addEventListener("click", () => { exportPNG(); });
+
+/* ---- tell the parent page how tall we are (works if the CMS ever adds a resizer) ---- */
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+/* The toggle is sized to its longer label. Otherwise "Show chart" is wider
+   than "Show data", the source line beside it wraps once more at narrow
+   widths, and the figure grows by a line inside the fixed iframe. */
+function pinToggleWidth(){
+  const t = document.getElementById("toggle"), label = t.textContent;
+  t.style.minWidth = "";
+  t.textContent = "Show chart"; const a = t.offsetWidth;
+  t.textContent = "Show data";  const b = t.offsetWidth;
+  t.textContent = label; t.style.minWidth = Math.ceil(Math.max(a, b)) + "px";
+}
+pinToggleWidth();
+document.fonts.ready.then(() => { pinToggleWidth(); render(); });
+
+buildTable();
+render();
+/* Re-render on width change only. Observing .wrap and re-rendering on any
+   size change would loop, because render() sets the svg height, which
+   resizes .wrap, which fires the observer again. */
+let lastW = W;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w && w !== lastW) { lastW = w; render(); }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>
