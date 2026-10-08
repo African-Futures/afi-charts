@@ -158,7 +158,7 @@ svg{display:block; width:100%; height:auto; overflow:visible}
    ============================================================ */
 const CONFIG = {
   title:    "Women do most of the world’s unpaid care work, in every region",
-  subtitle: "Average hours per day spent on unpaid care and domestic work, people aged 15 and older, 2025. Sorted by the gap between women and men. Regional values are UN estimates; time-use surveys in Africa are few and often dated.",
+  subtitle: "Average hours per day spent on unpaid care and domestic work, people aged 15 and older, 2025. Sorted by women’s hours. Regional values are UN estimates; time-use surveys in Africa are few and often dated.",
   source:   "UN Statistics Division and UN Women, SDG Global Database, indicator 5.4.1 (SL_DOM_TSPD), via Our World in Data, accessed 29 September 2026",
   sourceUrl: "https://ourworldindata.org/grapher/time-spend-in-domestic-work-female-vs-male",
   vTitle:   "Hours per day",                    // value-axis title, in its own row
@@ -169,7 +169,7 @@ const CONFIG = {
 
   /* "end" sorts by the second value, "start" by the first, "change" by the
      gap; anything else keeps the order of DATA.categories. */
-  sort:     "change",
+  sort:     "end",
   rowHeight: 34,   // px per row; the SVG height follows the row count only
 };
 
