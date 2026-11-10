@@ -199,8 +199,11 @@ const SERIES = DATA.series.map((s, i) => ({...s, color: RAMP[i]}));
 const fmt  = v => v == null ? "—" : d3.format(`,.${CONFIG.decimals}f`)(v) + "%";
 const fmtT = v => v == null ? "—" : d3.format(`,.${CONFIG.tipDecimals}f`)(v);
 const fmtTIV = v => d3.format(",")(v);
+/* Round numerically, never by parsing d3.format output: d3 writes negatives
+   with a typographic minus (U+2212), which Number() reads as NaN. */
 const fmtChange = v => {
-  const r = +d3.format(`.${CONFIG.tipDecimals}f`)(v);
+  if (v == null || !isFinite(v)) return "—";
+  const k = 10 ** CONFIG.tipDecimals, r = Math.round(Math.abs(v) * k) / k * Math.sign(v);
   return (r > 0 ? "+" : r < 0 ? "−" : "") + d3.format(`,.${CONFIG.tipDecimals}f`)(Math.abs(r));
 };
 
