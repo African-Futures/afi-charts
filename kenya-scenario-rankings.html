@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scenario rankings by development impact in Kenya, 2043</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap">
+<style>
+/* AFI house tokens and shell, as in the AFI bar template */
+:root{
+  --ink:      #172859;   /* titles, primary text            */
+  --label:    #58585a;   /* axis labels, ticks, legend      */
+  --muted:    #7d8899;   /* source line, footnotes          */
+  --grid:     #d1d2d4;   /* gridlines                       */
+  --panel:    #eff0f1;   /* forecast band, table stripes    */
+  --surface:  #ffffff;   /* chart canvas                    */
+  --display: "Open Sans",system-ui,-apple-system,sans-serif;   /* matches futures.issafrica.org */
+  --body:    "Open Sans",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0; padding:0; background:var(--surface)}
+body{
+  font-family:var(--body); color:var(--ink);
+  font-variant-numeric:tabular-nums;   /* every figure aligns, everywhere */
+  -webkit-font-smoothing:antialiased;
+}
+.afi{max-width:none; margin:0; padding:16px 0 12px}   /* fills the iframe so chart text
+                                                          aligns with the article body */
+
+.afi-title{font-family:var(--display); font-size:22px; font-weight:400;
+  line-height:1.25; margin:0 0 5px; text-wrap:balance}
+.afi-subtitle{font-size:14px; line-height:1.45; color:var(--label); margin:0 0 14px; max-width:64ch}
+
+svg{display:block; width:100%; height:auto; overflow:visible}
+.axis text{font-size:12px; fill:var(--label)}
+.axis .domain{display:none}          /* no axis lines — house rule */
+.axis line{stroke:var(--grid)}
+.grid line{stroke:var(--grid); shape-rendering:crispEdges}
+.ytitle{font-size:12px; fill:var(--label)}
+.zeroline{stroke:var(--label); stroke-width:1; shape-rendering:crispEdges}
+.bar{shape-rendering:crispEdges}
+.bar.dim{opacity:.28}                /* non-highlighted bars, when highlight is in use */
+.vlabel{font-size:12px; font-weight:500}
+.vlabel.inside{fill:var(--surface)}
+.seglabel{font-size:11.5px; font-weight:500}   /* fill set per segment, from its luminance */
+.totlabel{font-size:12px; font-weight:600; fill:var(--ink)}
+.fcband{fill:var(--panel)}
+.fcline{stroke:var(--grid); stroke-dasharray:3 3}
+.fclabel{font-size:11px; fill:var(--muted)}
+/* band marking a threshold region on the value axis */
+.vband{fill:var(--panel)}
+.vbandline{stroke:var(--grid); stroke-width:1; stroke-dasharray:4 3}
+.vbandlabel{font-size:11px; fill:var(--muted)}
+.vbandtick{font-size:12px; fill:var(--muted)}
+/* reference line (an average, a target) — dashed, house rule */
+.refline{stroke:var(--label); stroke-width:1.5; stroke-dasharray:6 4}
+.reflabel{font-size:11px; fill:var(--label)}
+/* overlaid line on a second axis */
+.overlay{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.overlaydot{stroke:var(--surface); stroke-width:1.5}
+.legend text{font-size:11.5px; fill:var(--label)}
+.hoverband{fill:var(--ink); opacity:.05}
+
+.afi-foot{display:flex; align-items:flex-start; gap:14px; margin-top:12px;
+  padding-top:10px; border-top:1px solid var(--panel)}
+.afi-source{font-size:11.5px; color:var(--muted); line-height:1.45; flex:1}
+.afi-source a{color:var(--muted)}
+.afi-toggle{font-family:var(--body); font-size:11.5px; color:var(--label);
+  background:none; border:1px solid var(--grid); border-radius:4px;
+  padding:4px 10px; cursor:pointer; white-space:nowrap}
+.afi-toggle:hover{border-color:var(--label); color:var(--ink)}
+.afi-toggle:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+.afi-actions{display:flex; gap:8px; flex-shrink:0}
+
+/* hover */
+.tip{position:absolute; pointer-events:none; background:var(--surface);
+  border:1px solid var(--grid); border-radius:5px; padding:9px 11px;
+  box-shadow:0 2px 10px rgba(23,40,89,.13); font-size:12.5px; min-width:150px}
+.tip h4{font-family:var(--display); margin:0 0 6px; font-size:13px; font-weight:600}
+.tip table{border-collapse:collapse; width:100%}
+.tip td{padding:1.5px 0}
+.tip td.v{text-align:right; padding-left:14px; font-variant-numeric:tabular-nums}
+.tip tr.tot td{border-top:1px solid var(--grid); padding-top:4px; font-weight:600}
+.tip .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px}
+.wrap{position:relative}
+
+/* table view */
+.afi-table{overflow:auto}   /* max-height set from the SVG height in JS */
+.afi-table table{border-collapse:collapse; font-size:12.5px; width:100%}
+.afi-table th,.afi-table td{padding:5px 10px; text-align:right; white-space:nowrap}
+.afi-table th{position:sticky; top:0; background:var(--surface); color:var(--label);
+  font-weight:500; border-bottom:1px solid var(--grid); text-align:right}
+.afi-table th:first-child,.afi-table td:first-child{text-align:left}
+.afi-table tbody tr:nth-child(even){background:var(--panel)}
+[hidden]{display:none !important}
+.sr-only{position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0}
+
+@media (max-width:560px){
+  .afi{padding:14px 14px 12px}
+  .afi-title{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.afi-title{text-wrap:pretty}
+.afi-views{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px}
+.afi-views button{font:13px var(--body); border:1px solid var(--ink); border-radius:4px; background:var(--surface); color:var(--ink); padding:5px 12px; cursor:pointer}
+.afi-views button[aria-pressed=true]{background:var(--ink); color:var(--surface)}
+.afi-views button:focus-visible{outline:2px solid #004ea2; outline-offset:2px}
+svg g[data-n]:focus{outline:none}
+@media (max-width:560px){.afi-foot{flex-wrap:wrap; gap:8px} .afi-source{flex-basis:100%}}
+</style>
+</head>
+<body>
+<div class="afi">
+  <h1 class="afi-title" id="title"></h1>
+  <p class="afi-subtitle" id="subtitle"></p>
+  <div class="wrap">
+    <svg id="chart" role="img" aria-labelledby="title"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="afi-table" id="tableview" hidden></div>
+  <div class="afi-foot">
+    <div class="afi-source" id="source"></div>
+    <div class="afi-actions">
+      <button class="afi-toggle" id="download" type="button">Download PNG</button>
+      <button class="afi-toggle" id="toggle" type="button" aria-expanded="false" style="min-width:88px">Show data</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG and DATA — the per-chart block.
+   ============================================================ */
+const CONFIG = {
+  title:    "Scenario rankings by development impact in Kenya, 2043",
+  subtitle: "Eight sectoral scenarios ranked by their difference from the Current Path, where 1st is the largest gain",
+  source:   'AFI Kenya Report; <a href="https://korbel.du.edu/pardee/" target="_blank" rel="noopener">International Futures version 8.72</a>. Poverty measured at US$4.20 a day (2021 PPP). An equals sign marks a tie at the rounding shown.',
+  highlight: "Agriculture",
+  height:   396,
+};
+const DATA = [  // scenario, row position, rank label, value (GDP US$bn, GDP per capita US$, poverty points)
+  ["Governance",[1,1,1],[1,1,1],[29,490,"3.7"]],
+  ["Manufacturing",[3,4,7],[3,4,7],[16,280,"1.1"]],
+  ["Infrastructure",[4,5,4],[4,5,"4="],[14,240,"1.5"]],
+  ["Demographics & Health",[5,3,3],[5,3,3],[14,370,"1.9"]],
+  ["Education",[6,6,2],[6,"6=",2],[11,180,"2.9"]],
+  ["Financial Flows",[7,7,5],[7,"6=","4="],[10,180,"1.5"]],
+  ["Trade",[8,8,8],[8,8,8],[6,100,"0.2"]],
+  ["Agriculture",[2,2,6],[2,2,6],[28,470,"1.2"]],
+];
+
+/* ============================================================
+   Shared shell
+   ============================================================ */
+const INK="#172859", LABEL="#58585a", GRID="#d1d2d4", PANEL="#eff0f1", SURFACE="#ffffff", ORANGE="#e67500";
+const $ = id => document.getElementById(id);
+const svg = $("chart"), tip = $("tip"), btn = $("toggle"), tv = $("tableview"), plot = document.querySelector(".wrap");
+const nf = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const T = (x,y,str,a="") => `<text x="${x}" y="${y}" ${a}>${str}</text>`;
+const probe = document.createElement("canvas").getContext("2d");
+const textW = (s, font) => { probe.font = `${font} "Open Sans", system-ui, sans-serif`; return probe.measureText(s).width; };
+$("title").textContent = CONFIG.title;
+$("subtitle").textContent = CONFIG.subtitle;
+$("source").innerHTML = "Source: " + CONFIG.source;
+let W = 0;
+function size(H){
+  W = Math.round(plot.clientWidth) || W || 780;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+}
+
+const ORD = ["1st","2nd","3rd","4th","5th","6th","7th","8th"];
+const Y = r => 76 + (r-1)*42;
+function paint(sel){
+  svg.querySelectorAll("g[data-n]").forEach(g => {
+    const ag = g.dataset.n === CONFIG.highlight, on = g.dataset.n === sel;
+    const ln = g.querySelector(".ln");
+    ln.setAttribute("stroke", ag ? ORANGE : on ? "#697ba5" : "#b8c0d4");
+    ln.setAttribute("stroke-width", ag||on ? 5 : 2);
+    g.querySelectorAll(".val").forEach(t => t.setAttribute("font-weight", ag||on ? 700 : 400));
+    g.querySelectorAll(".nm").forEach(t => t.setAttribute("font-weight", ag ? 700 : on ? 600 : 400));
+  });
+}
+function render(){
+  size(CONFIG.height);
+  const narrow = W < 560;
+  const nfs = narrow ? 11 : 12;
+  const widest = Math.max(...DATA.map(d => textW(d[0], "700 12px")));
+  const X0 = narrow ? 48 : 90;
+  const X2 = narrow ? W - 104 : W - Math.ceil(widest) - 24;
+  const X = [X0, (X0+X2)/2, X2], c = (X[1]-X[0])/2;
+  const heads = narrow
+    ? [["GDP","(MER)","US$ bn"],["GDP per","capita","US$ PPP"],["Poverty","reduction","points"]]
+    : [["GDP (MER)",null,"US$ billion"],["GDP per capita",null,"US$, 2021 PPP"],["Poverty reduction",null,"percentage points"]];
+  let h = "";
+  heads.forEach(([a,b,u],i) => {
+    const hd = `text-anchor="middle" font-size="${narrow?12:14}" font-weight="600" fill="${INK}"`;
+    h += b ? T(X[i],12,a,hd) + T(X[i],26,b,hd) : T(X[i],18,a,hd);
+    h += T(X[i], narrow?42:35, u, `text-anchor="middle" font-size="${narrow?11:12}" fill="${LABEL}"`);
+  });
+  h += T(0, narrow?42:35, "Rank", `font-size="${nfs}" fill="${LABEL}"`);
+  ORD.forEach((t,i) => h += T(0, Y(i+1)+4, t, `font-size="${nfs}" fill="${LABEL}"`));
+  const order = [...DATA].sort((a,b) => (a[0]===CONFIG.highlight) - (b[0]===CONFIG.highlight));
+  order.forEach(([n,p,lab,v]) => {
+    const ag = n === CONFIG.highlight, dot = ag ? ORANGE : "#697ba5";
+    const d = `M${X[0]} ${Y(p[0])}C${X[0]+c} ${Y(p[0])} ${X[1]-c} ${Y(p[1])} ${X[1]} ${Y(p[1])}C${X[1]+c} ${Y(p[1])} ${X[2]-c} ${Y(p[2])} ${X[2]} ${Y(p[2])}`;
+    h += `<g data-n="${n.replace("&","&amp;")}" tabindex="0" style="cursor:pointer" aria-label="${n.replace("&","and")}">`;
+    h += `<path d="${d}" fill="none" stroke="transparent" stroke-width="14"/><path class="ln" d="${d}" fill="none"/>`;
+    p.forEach((q,i) => {
+      h += `<circle cx="${X[i]}" cy="${Y(q)}" r="12" fill="${dot}"/>`;
+      h += T(X[i], Y(q)+4, lab[i], `text-anchor="middle" font-size="12" font-weight="700" fill="${SURFACE}"`);
+      h += T(X[i], Y(q)-16, v[i], `class="val" text-anchor="middle" font-size="11" font-style="italic" fill="${INK}" stroke="${SURFACE}" stroke-width="3" paint-order="stroke"`);
+    });
+    const words = n.split(" ");
+    const lines = narrow && words.length > 1 ? [words[0], words.slice(1).join(" ")] : [n];
+    const nx = X[2] + (narrow?16:20), y0 = Y(p[2]) + 4 - (lines.length-1)*7;
+    h += "<g>" + lines.map((l,i) => T(nx, y0+i*14, l.replace("&","&amp;"), `class="nm" font-size="${nfs}" fill="${INK}"`)).join("") + "</g>";
+    h += "</g>";
+  });
+  svg.innerHTML = h;
+  paint(null);
+  reportHeight();
+}
+/* highlight in place, so keyboard focus is never lost */
+const group = e => e.target.closest && e.target.closest("g[data-n]");
+svg.addEventListener("pointerover", e => {
+  const g = group(e); if (!g) return;
+  const top = [...svg.querySelectorAll("g[data-n]")].find(x => x.dataset.n === CONFIG.highlight);
+  if (g !== top && g.nextElementSibling !== top) svg.insertBefore(g, top);
+  paint(g.dataset.n);
+});
+svg.addEventListener("focusin", e => { const g = group(e); if (g) paint(g.dataset.n); });
+svg.addEventListener("focusout", () => paint(null));
+svg.addEventListener("pointerleave", () => paint(null));
+function table(){
+  return { head: ["Scenario","GDP gain (US$ bn)","Rank","GDP per capita gain (US$)","Rank","Poverty reduction (points)","Rank"],
+    rows: [...DATA].sort((a,b) => a[1][0]-b[1][0]).map(([n,p,l,v]) => [n.replace("&","&amp;"), v[0], l[0], v[1], l[1], v[2], l[2]]) };
+}
+
+function buildTable(){
+  const {head, rows} = table();
+  tv.innerHTML = `<table><caption class="sr-only">${CONFIG.title}</caption><thead><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead>` +
+    `<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+/* the table takes the plot's exact box, so the figure never changes height */
+btn.addEventListener("click", () => {
+  const show = tv.hasAttribute("hidden");
+  if (show) {
+    const h = plot.offsetHeight + "px";
+    tv.style.height = tv.style.maxHeight = h;
+    tv.removeAttribute("hidden"); plot.setAttribute("hidden","");
+  } else { tv.setAttribute("hidden",""); plot.removeAttribute("hidden"); render(); }
+  btn.textContent = show ? "Show chart" : "Show data";
+  btn.setAttribute("aria-expanded", String(show));
+  reportHeight();
+});
+
+/* ============================================================
+   PNG export — redraws the chart onto a canvas at 2x.
+
+   The chart is not rasterised via an SVG data URL, because an SVG
+   loaded that way renders in an isolated context with no access to
+   the page's webfonts, so every label would silently fall back to a
+   system face. Redrawing through the Canvas 2D API uses the fonts
+   already loaded here, so the PNG matches what is on screen.
+   ============================================================ */
+function wrapLines(ctx, text, maxW){
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (line && ctx.measureText(t).width > maxW) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function paintSvgNode(ctx, el){
+  const cs = getComputedStyle(el);
+  if (cs.display === "none" || cs.visibility === "hidden") return;
+  ctx.save();
+  const op = parseFloat(cs.opacity);
+  if (!isNaN(op) && op < 1) ctx.globalAlpha *= op;
+
+  /* translate then rotate, in the order SVG applies them */
+  const tf = el.getAttribute && el.getAttribute("transform");
+  if (tf) {
+    const mt = /translate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+))?/.exec(tf);
+    if (mt) ctx.translate(+mt[1], +(mt[2] || 0));
+    const mr = /rotate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+)[\s,]+([-\d.]+))?\s*\)/.exec(tf);
+    if (mr) {
+      const a = +mr[1] * Math.PI / 180;
+      if (mr[2] != null) { ctx.translate(+mr[2], +mr[3]); ctx.rotate(a); ctx.translate(-mr[2], -mr[3]); }
+      else ctx.rotate(a);
+    }
+  }
+
+  const tag = (el.tagName || "").toLowerCase();
+  const num = (a, d = 0) => { const v = el.getAttribute(a); return v == null ? d : parseFloat(v); };
+  const dash = (cs.strokeDasharray && cs.strokeDasharray !== "none")
+      ? cs.strokeDasharray.split(/[ ,]+/).map(parseFloat).filter(n => !isNaN(n)) : [];
+  const sw = parseFloat(cs.strokeWidth) || 1;
+  const hasStroke = cs.stroke && cs.stroke !== "none";
+  const hasFill = cs.fill && cs.fill !== "none" && cs.fill !== "rgba(0, 0, 0, 0)";
+
+  if (tag === "rect") {
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fillRect(num("x"), num("y"), num("width"), num("height")); }
+  } else if (tag === "line") {
+    if (hasStroke) {
+      ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(num("x1"), num("y1")); ctx.lineTo(num("x2"), num("y2")); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (tag === "path") {
+    const d = el.getAttribute("d");
+    if (d) {
+      const path = new Path2D(d);
+      if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(path); }
+      if (hasStroke) {
+        ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.setLineDash(dash);
+        ctx.lineJoin = cs.strokeLinejoin || "round"; ctx.lineCap = cs.strokeLinecap || "butt";
+        ctx.stroke(path);
+        ctx.setLineDash([]);
+      }
+    }
+  } else if (tag === "circle") {
+    ctx.beginPath(); ctx.arc(num("cx"), num("cy"), num("r"), 0, Math.PI * 2);
+    if (hasFill) { ctx.fillStyle = cs.fill; ctx.fill(); }
+    if (hasStroke) { ctx.strokeStyle = cs.stroke; ctx.lineWidth = sw; ctx.stroke(); }
+  } else if (tag === "text") {
+    const fs = parseFloat(cs.fontSize) || 12;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${fs}px ${cs.fontFamily}`;
+    ctx.fillStyle = cs.fill;
+    const halo = hasStroke ? sw : 0;
+    ctx.textAlign = ({ start: "left", middle: "center", end: "right" })[cs.textAnchor] || "left";
+    const dyAttr = el.getAttribute("dy");
+    const dy = dyAttr ? (/em$/.test(dyAttr) ? parseFloat(dyAttr) * fs : parseFloat(dyAttr)) : 0;
+    const dxAttr = el.getAttribute("dx");
+    const dx = dxAttr ? (/em$/.test(dxAttr) ? parseFloat(dxAttr) * fs : parseFloat(dxAttr)) : 0;
+    /* Wrapped category labels are tspans, each carrying its own dy. Drawing
+       el.textContent would run every line together on one baseline. */
+    const spans = el.querySelectorAll(":scope > tspan");
+    if (spans.length){
+      let ty = num("y") + dy;
+      spans.forEach(ts => {
+        const tdy = ts.getAttribute("dy");
+        if (tdy) ty += /em$/.test(tdy) ? parseFloat(tdy) * fs : parseFloat(tdy);
+        const tx = ts.getAttribute("x") != null ? parseFloat(ts.getAttribute("x")) : num("x");
+        ctx.fillText(ts.textContent, tx + dx, ty);
+      });
+    } else {
+      /* a <title> child is a tooltip, not drawn text */
+      const str = Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.nodeValue).join("");
+      if (halo){ ctx.strokeStyle = cs.stroke; ctx.lineWidth = halo; ctx.lineJoin = "round"; ctx.strokeText(str, num("x") + dx, num("y") + dy); }
+      ctx.fillText(str, num("x") + dx, num("y") + dy);
+    }
+    ctx.textAlign = "left";
+  }
+
+  for (const child of el.children){
+    const t = (child.tagName||"").toLowerCase();
+    if (t !== "title" && t !== "tspan") paintSvgNode(ctx, child);   /* both handled above */
+  }
+  ctx.restore();
+}
+
+async function exportPNG(){
+  /* the table view hides the chart — switch back before drawing */
+  if (plot.hasAttribute("hidden")) btn.click();
+  await document.fonts.ready;
+
+  const SCALE = 2, PAD = 16;
+  const svgEl = document.querySelector("svg");
+  const vb = svgEl.viewBox.baseVal;
+  const CW = vb.width || svgEl.clientWidth, SH = vb.height || svgEl.clientHeight;
+
+  const titleEl = document.querySelector(".afi-title"),
+        subEl   = document.querySelector(".afi-subtitle"),
+        srcEl   = document.querySelector(".afi-source");
+  const tcs = getComputedStyle(titleEl), scs = getComputedStyle(subEl), rcs = getComputedStyle(srcEl);
+  const tf = parseFloat(tcs.fontSize), sf = parseFloat(scs.fontSize), rf = parseFloat(rcs.fontSize);
+  const tLh = tf * 1.25, sLh = sf * 1.45, rLh = rf * 1.45;
+
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`;
+  const tLines = wrapLines(probe, titleEl.textContent, CW);
+  probe.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`;
+  const subMax = Math.min(CW, 64 * probe.measureText("0").width);
+  const sLines = subEl.textContent.trim() ? wrapLines(probe, subEl.textContent, subMax) : [];
+  if (CONFIG.pngNote) sLines.push(...wrapLines(probe, CONFIG.pngNote(), CW));
+  probe.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`;
+  const rLines = wrapLines(probe, srcEl.textContent, CW);
+
+  const titleH = tLines.length * tLh, subH = sLines.length * sLh, srcH = rLines.length * rLh;
+  const totalH = PAD + titleH + 5 + subH + 14 + SH + 14 + srcH + PAD;
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(CW * SCALE); c.height = Math.round(totalH * SCALE);
+  const ctx = c.getContext("2d");
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = SURFACE; ctx.fillRect(0, 0, CW, totalH);
+  ctx.textBaseline = "alphabetic";
+
+  let y = PAD;
+  ctx.font = `${tcs.fontWeight} ${tf}px ${tcs.fontFamily}`; ctx.fillStyle = tcs.color;
+  tLines.forEach(l => { y += tLh; ctx.fillText(l, 0, y - tLh * 0.25); });
+  y += 5;
+  ctx.font = `${scs.fontWeight} ${sf}px ${scs.fontFamily}`; ctx.fillStyle = scs.color;
+  sLines.forEach(l => { y += sLh; ctx.fillText(l, 0, y - sLh * 0.28); });
+  y += 14;
+
+  ctx.save(); ctx.translate(0, y); paintSvgNode(ctx, svgEl); ctx.restore();
+  y += SH + 14;
+
+  ctx.strokeStyle = PANEL; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, y - 8); ctx.lineTo(CW, y - 8); ctx.stroke();
+  ctx.font = `${rcs.fontWeight} ${rf}px ${rcs.fontFamily}`; ctx.fillStyle = rcs.color;
+  rLines.forEach(l => { y += rLh; ctx.fillText(l, 0, y - rLh * 0.3); });
+
+  const slug = (CONFIG.title || "afi-chart").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  await new Promise(res => c.toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = slug + ".png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    res();
+  }, "image/png"));
+  return { width: c.width, height: c.height };
+}
+
+
+$("download").addEventListener("click", () => { exportPNG(); });
+
+function reportHeight(){
+  const h = document.querySelector(".afi").getBoundingClientRect().height + 8;
+  if (window.parent !== window) window.parent.postMessage({afiChartHeight: Math.ceil(h)}, "*");
+}
+
+buildTable();
+render();
+document.fonts.ready.then(() => { if (!plot.hasAttribute("hidden")) render(); });
+let lastW = document.querySelector(".afi").getBoundingClientRect().width | 0;
+new ResizeObserver(e => {
+  const w = e[0].contentRect.width | 0;
+  if (w && w !== lastW) {
+    lastW = w;
+    if (plot.hasAttribute("hidden")) btn.click(); else render();
+  }
+}).observe(document.querySelector(".afi"));
+</script>
+</body>
+</html>
